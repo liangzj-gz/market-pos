@@ -60,6 +60,26 @@ export const CatalogView = {
         return hay.includes(kw);
       }).sort((a, b) => (a.status === b.status ? a.name.localeCompare(b.name, 'zh-Hans-CN') : a.status === 'on_sale' ? -1 : 1));
     },
+    productGroups() {
+      const order = new Map(this.rootCats.map((c, i) => [c.id, i]));
+      const map = new Map();
+      for (const p of this.products) {
+        const path = this.pathArr(p.category_id);
+        const root = path[0] || null;
+        const key = root ? root.id : 'none';
+        let group = map.get(key);
+        if (!group) {
+          group = { key: String(key), id: root ? root.id : null, name: root ? root.name : '未分类', items: [] };
+          map.set(key, group);
+        }
+        group.items.push(p);
+      }
+      return Array.from(map.values()).sort((a, b) => {
+        if (a.id === null) return 1;
+        if (b.id === null) return -1;
+        return order.get(a.id) - order.get(b.id);
+      });
+    },
     combos() { return store.db.combos; },
     stats() {
       return {
@@ -108,6 +128,10 @@ export const CatalogView = {
       const path = this.pathArr(p.category_id);
       if (path.length) return path.map(c => c.name).join(' / ');
       return [p.category, p.series].filter(Boolean).join(' / ');
+    },
+    subCatOf(p) {
+      const path = this.pathArr(p.category_id).slice(1).map(c => c.name);
+      return path.filter((n, i) => n !== path[i - 1]).join(' / ') || '未分类';
     },
 
     /* ---------- 商品表单 ---------- */
@@ -308,30 +332,44 @@ export const CatalogView = {
       </div>
     </div>
 
-    <div class="prod-list" v-if="products.length">
-      <div class="prod-row" v-for="p in products" :key="p.id" :class="{ 'is-off': p.status === 'off_sale' }">
-        <div class="prod-main" @click="openEdit(p)">
-          <div class="prod-name">
-            <span class="strong">{{ p.name }}</span>
-            <span class="tag tag-gray" v-if="p.status === 'off_sale'">停售</span>
-          </div>
-          <div class="prod-meta xs muted">
-            <span class="mono">{{ p.sku_code }}</span> · {{ catPathText(p) || '未分类' }}
-            <span class="prod-tags" v-if="p.tags && p.tags.length">
-              <span v-for="t in p.tags" :key="t" class="tag tag-brand prod-tag">#{{ t }}</span>
-            </span>
-          </div>
-          <div class="prod-meta xs muted">
-            <span>{{ p.location ? '货位 ' + p.location : '未设货位' }}</span> ·
-            余 <b class="mono">{{ stockOf(p.id).known ? stockOf(p.id).qty : '—' }}</b><template v-if="p.safety_stock > 0"> / 阈 {{ p.safety_stock }}</template>
-          </div>
+    <div class="prod-groups" v-if="products.length">
+      <section class="prod-group" v-for="g in productGroups" :key="g.key">
+        <div class="pg-head">
+          <span class="pg-dot"></span>
+          <span class="pg-name">{{ g.name }}</span>
+          <span class="pg-count mono">{{ g.items.length }}</span>
+          <span class="pg-rule"></span>
         </div>
-        <div class="prod-price">
-          <b class="mono">{{ money(p.list_price) }}</b>
-          <span class="xs muted" v-if="p.cost_price !== null">成本 {{ money(p.cost_price) }}</span>
+        <div class="prod-grid">
+          <article class="prod-cell" v-for="p in g.items" :key="p.id" :class="{ 'is-off': p.status === 'off_sale' }">
+            <button class="pc-open" @click="openEdit(p)" :aria-label="'编辑商品 ' + p.name">
+              <span class="pc-top">
+                <span class="pc-sku mono">{{ p.sku_code }}</span>
+                <span class="tag tag-gray" v-if="p.status === 'off_sale'">停售</span>
+              </span>
+              <span class="pc-name" :title="p.name">{{ p.name }}</span>
+              <span class="pc-sub xs muted">
+                <span class="truncate">{{ subCatOf(p) }}</span>
+                <span class="nowrap" v-if="p.location">· {{ p.location }}</span>
+              </span>
+              <span class="pc-tags" v-if="(p.tags || []).length">
+                <span v-for="t in p.tags.slice(0, 2)" :key="t" class="tag tag-brand pc-tag">#{{ t }}</span>
+                <span v-if="p.tags.length > 2" class="pc-more muted">+{{ p.tags.length - 2 }}</span>
+              </span>
+            </button>
+            <div class="pc-foot">
+              <b class="pc-price mono" :title="p.cost_price !== null && p.cost_price !== undefined ? '成本 ' + money(p.cost_price) : ''">{{ money(p.list_price) }}</b>
+              <span class="pc-stock xs" :class="'is-' + stockOf(p.id).state"
+                    :title="p.safety_stock > 0 ? '安全库存阈值 ' + p.safety_stock : ''">
+                <span class="pc-stock-dot"></span>
+                余 {{ stockOf(p.id).known ? stockOf(p.id).qty : '—' }}
+              </span>
+              <button class="btn btn-sm btn-quiet pc-toggle" @click="toggle(p)"
+                      :aria-label="(p.status === 'on_sale' ? '下架 ' : '上架 ') + p.name">{{ p.status === 'on_sale' ? '下架' : '上架' }}</button>
+            </div>
+          </article>
         </div>
-        <button class="btn btn-sm" @click="toggle(p)">{{ p.status === 'on_sale' ? '下架' : '上架' }}</button>
-      </div>
+      </section>
     </div>
     <div class="card" v-else><div class="card-body">
       <ui-empty icon="products" title="没有符合条件的商品" text="换个分类或标签，也可以新增一个。">

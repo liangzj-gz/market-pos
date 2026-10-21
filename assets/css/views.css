@@ -475,25 +475,57 @@
 .ac-now { margin-right: auto; }
 
 /* ============ 商品 / 套餐 ============ */
-.prod-list { display: flex; flex-direction: column; gap: 10px; }
-.prod-row {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto;
-  gap: 3px 12px; align-items: center;
+.prod-groups { display: flex; flex-direction: column; gap: 22px; }
+.prod-group { min-width: 0; }
+.pg-head { display: flex; align-items: center; gap: 8px; padding: 0 2px 9px; }
+.pg-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--blue); flex: none; }
+.pg-name { font-size: var(--fs-md); font-weight: 650; letter-spacing: -.01em; }
+.pg-count {
+  padding: 1px 8px; border-radius: var(--r-pill);
+  background: var(--fill); color: var(--label-3);
+  font-size: var(--fs-xs); font-weight: 600;
+}
+.pg-rule { flex: 1; height: 1px; background: var(--stroke); }
+
+.prod-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 10px; }
+.prod-cell {
+  display: flex; flex-direction: column; min-width: 0;
   background: var(--glass);
   -webkit-backdrop-filter: var(--blur);
   backdrop-filter: var(--blur);
-  border: 1px solid var(--stroke-bright);
-  border-radius: var(--r-md); padding: 13px 15px;
-  box-shadow: var(--sh-1);
+  border: 1px solid var(--stroke-bright); border-radius: var(--r-md);
+  padding: 12px 12px 10px; box-shadow: var(--sh-1);
+  transition: background var(--dur) var(--ease), box-shadow var(--dur) var(--ease), transform var(--dur) var(--ease);
 }
-.prod-main { grid-column: 1; grid-row: 1 / span 2; min-width: 0; cursor: pointer; }
-.prod-name { display: flex; align-items: center; gap: 6px; }
-.prod-meta { margin-top: 1px; line-height: 1.5; }
-.prod-tags { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 6px; vertical-align: 1px; }
-.prod-tag { padding: 1px 7px; font-size: 10.5px; }
-.prod-price { grid-column: 2; grid-row: 1; display: flex; align-items: baseline; gap: 6px; justify-self: end; }
-.prod-price b { font-size: var(--fs-lg); font-weight: 650; letter-spacing: -.02em; }
-.prod-row > .btn { grid-column: 2; grid-row: 2; justify-self: end; }
+.prod-cell:hover { background: var(--glass-strong); box-shadow: var(--sh-2); transform: translateY(-1px); }
+.pc-open { display: flex; flex-direction: column; align-items: stretch; gap: 4px; width: 100%; flex: 1; min-width: 0; text-align: left; }
+.pc-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 18px; }
+.pc-sku { font-size: 10.5px; color: var(--label-4); letter-spacing: .02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-name {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: var(--fs-md); font-weight: 620; line-height: 1.35; letter-spacing: -.01em;
+}
+.pc-sub { display: flex; align-items: center; gap: 4px; min-width: 0; line-height: 1.4; }
+.pc-sub .truncate { min-width: 0; }
+.pc-tags { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.pc-tag { padding: 1px 7px; font-size: 10.5px; }
+.pc-more { font-size: 10.5px; }
+.pc-foot { display: flex; align-items: center; gap: 8px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--stroke); }
+.pc-price { font-size: var(--fs-lg); font-weight: 660; letter-spacing: -.02em; }
+.pc-stock { display: inline-flex; align-items: center; gap: 4px; color: var(--label-3); white-space: nowrap; }
+.pc-stock-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex: none; }
+.pc-stock.is-low { color: var(--amber); }
+.pc-stock.is-neg { color: var(--red); }
+.pc-stock.is-none { color: var(--label-4); }
+.pc-toggle { margin-left: auto; min-height: 26px; padding: 2px 8px; font-size: var(--fs-xs); flex: none; }
+
+@media (max-width: 520px) {
+  .prod-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .prod-cell { padding: 10px 10px 8px; }
+  .pc-name { font-size: var(--fs-sm); }
+  .pc-price { font-size: var(--fs-md); }
+}
 
 .combo-cards { display: flex; flex-direction: column; gap: 12px; }
 .combo-card {
