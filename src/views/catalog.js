@@ -21,6 +21,7 @@ export const CatalogView = {
       search: '',
       tag: 'all',
       activeRoot: null,
+      activeMid: null,
       prodForm: null,
       comboTarget: null,
       confirmDelete: null,
@@ -79,7 +80,7 @@ export const CatalogView = {
         let sub = group.mids.get(midKey);
         if (!sub) {
           sub = {
-            key: String(midKey), id: mid ? mid.id : null,
+            key: String(rootKey) + '-' + String(midKey), id: mid ? mid.id : null,
             name: mid ? mid.name : (root ? '未细分' : '未分类'), items: []
           };
           group.mids.set(midKey, sub);
@@ -103,10 +104,7 @@ export const CatalogView = {
     stats() {
       return {
         total: this.allProducts.length,
-        onSale: this.allProducts.filter(p => p.status === 'on_sale').length,
-        combos: store.db.combos.length,
-        cats: new Set(this.allProducts.map(p => this.pathArr(p.category_id)[0]?.id).filter(Boolean)).size,
-        tags: this.tags.length
+        combos: store.db.combos.length
       };
     },
     /* 分类管理：桌面上两栏联动，手机上按 breadcrumb 逐层钻取 */
@@ -127,6 +125,12 @@ export const CatalogView = {
     },
     comboFormValid() {
       return this.comboTarget && this.comboTarget.name.trim() && this.comboTarget.items.some(i => i.product_id);
+    },
+    activeRootGroup() {
+      return this.rootGroups.find(g => g.key === this.activeRoot) || null;
+    },
+    activeRootMids() {
+      return this.activeRootGroup ? this.activeRootGroup.mids : [];
     }
   },
   watch: {
@@ -170,25 +174,49 @@ export const CatalogView = {
       const sub = path.filter((n, i) => n !== path[i - 1]).join(' / ');
       return sub || (p.category_id ? '未细分' : '未分类');
     },
-    rootDomId(group) { return 'cat-root-' + (group.id === null ? 'none' : group.id); },
+    rootDomId(group) { return 'cat-root-' + group.key; },
+    midDomId(sub) { return 'cat-mid-' + sub.key; },
     jumpToRoot(group) {
-      const el = document.getElementById(this.rootDomId(group));
-      if (!el) return;
       this.activeRoot = group.key;
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      this.activeMid = null;
+      this.$nextTick(() => {
+        const el = document.getElementById(this.rootDomId(group));
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    },
+    jumpToMid(group, sub) {
+      this.activeRoot = group.key;
+      this.activeMid = sub.key;
+      this.$nextTick(() => {
+        const el = document.getElementById(this.midDomId(sub));
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
     },
     updateActiveRoot() {
       if (this.tab !== 'products') return;
       const groups = this.rootGroups;
-      if (!groups.length) { this.activeRoot = null; return; }
-      let current = groups[0].key;
+      if (!groups.length) { this.activeRoot = null; this.activeMid = null; return; }
+      let currentRoot = groups[0].key;
+      let currentMid = null;
       for (const group of groups) {
-        const el = document.getElementById(this.rootDomId(group));
-        if (el && el.getBoundingClientRect().top <= 130) current = group.key;
+        const rootEl = document.getElementById(this.rootDomId(group));
+        if (rootEl && rootEl.getBoundingClientRect().top <= 130) currentRoot = group.key;
+        for (const sub of group.mids) {
+          const midEl = document.getElementById(this.midDomId(sub));
+          if (midEl && midEl.getBoundingClientRect().top <= 130) {
+            currentRoot = group.key;
+            currentMid = sub.key;
+          }
+        }
       }
-      const atBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2;
-      if (atBottom) current = groups[groups.length - 1].key;
-      if (this.activeRoot !== current) this.activeRoot = current;
+      const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+      if (maxScroll - window.scrollY <= 80) {
+        const last = groups[groups.length - 1];
+        currentRoot = last.key;
+        currentMid = last.mids.length ? last.mids[last.mids.length - 1].key : null;
+      }
+      if (this.activeRoot !== currentRoot) this.activeRoot = currentRoot;
+      if (this.activeMid !== currentMid) this.activeMid = currentMid;
     },
 
     /* ---------- 商品表单 ---------- */
@@ -342,10 +370,12 @@ export const CatalogView = {
   },
   template: `
 <div class="v-catalog">
-  <div class="page-head row-between">
-    <div>
-      <div class="page-title">商品</div>
-      <div class="page-sub">{{ stats.onSale }} 个在售 · {{ stats.cats }} 个大类 · {{ stats.tags }} 个标签</div>
+  <div class="page-head row-between catalog-head">
+    <div class="seg catalog-seg" role="tablist">
+      <button class="seg-btn" :class="{ 'is-on': tab === 'products' }" role="tab" :aria-selected="tab === 'products'"
+              @click="tab = 'products'">商品 <span class="mono">{{ stats.total }}</span></button>
+      <button class="seg-btn" :class="{ 'is-on': tab === 'combos' }" role="tab" :aria-selected="tab === 'combos'"
+              @click="tab = 'combos'">套餐 <span class="mono">{{ stats.combos }}</span></button>
     </div>
     <div class="row" style="gap:8px">
       <button class="btn btn-icon" @click="openCatManager" aria-label="管理分类与标签" title="管理分类与标签">
@@ -355,13 +385,6 @@ export const CatalogView = {
         <ui-icon name="plus" :size="17" /> {{ tab === 'products' ? '新增商品' : '新增套餐' }}
       </button>
     </div>
-  </div>
-
-  <div class="seg" role="tablist">
-    <button class="seg-btn" :class="{ 'is-on': tab === 'products' }" role="tab" :aria-selected="tab === 'products'"
-            @click="tab = 'products'">商品 <span class="mono">{{ stats.total }}</span></button>
-    <button class="seg-btn" :class="{ 'is-on': tab === 'combos' }" role="tab" :aria-selected="tab === 'combos'"
-            @click="tab = 'combos'">套餐 <span class="mono">{{ stats.combos }}</span></button>
   </div>
 
   <!-- 商品 -->
@@ -384,22 +407,39 @@ export const CatalogView = {
     </div>
 
     <div class="catalog-layout" v-if="products.length">
-      <nav class="cat-rail" aria-label="商品大类">
-        <div class="cat-rail-title">大类</div>
-        <button v-for="g in rootGroups" :key="g.key" class="cat-rail-item"
-                :class="{ 'is-active': activeRoot === g.key }" @click="jumpToRoot(g)">
-          <span class="cr-dot"></span>
-          <span class="cr-name">{{ g.name }}</span>
-          <span class="cr-count mono">{{ g.total }}</span>
-        </button>
+      <nav class="cat-rail" aria-label="商品分类">
+        <div class="cat-rail-title">分类</div>
+        <template v-for="g in rootGroups" :key="g.key">
+          <button class="cat-rail-item cat-rail-root"
+                  :class="{ 'is-active': activeRoot === g.key && !activeMid, 'is-current': activeRoot === g.key && activeMid }"
+                  @click="jumpToRoot(g)">
+            <span class="cr-dot"></span>
+            <span class="cr-name">{{ g.name }}</span>
+            <span class="cr-count mono">{{ g.total }}</span>
+          </button>
+          <button v-for="mg in g.mids" :key="mg.key" class="cat-rail-item cat-rail-mid"
+                  :class="{ 'is-active': activeMid === mg.key }" @click="jumpToMid(g, mg)">
+            <span class="cr-subdot"></span>
+            <span class="cr-name">{{ mg.name }}</span>
+            <span class="cr-count mono">{{ mg.items.length }}</span>
+          </button>
+        </template>
       </nav>
 
       <div class="catalog-main">
-        <nav class="cat-rail-mobile" aria-label="商品大类">
-          <button v-for="g in rootGroups" :key="g.key" class="chip chip-brand"
-                  :class="{ 'is-on': activeRoot === g.key }" @click="jumpToRoot(g)">
-            {{ g.name }}<span class="chip-count">{{ g.total }}</span>
-          </button>
+        <nav class="cat-rail-mobile" aria-label="商品分类">
+          <div class="cat-rail-mobile-row">
+            <button v-for="g in rootGroups" :key="g.key" class="chip chip-brand"
+                    :class="{ 'is-on': activeRoot === g.key }" @click="jumpToRoot(g)">
+              {{ g.name }}<span class="chip-count">{{ g.total }}</span>
+            </button>
+          </div>
+          <div class="cat-rail-mobile-row crm-mids" v-if="activeRootMids.length">
+            <button v-for="mg in activeRootMids" :key="mg.key" class="crm-mid"
+                    :class="{ 'is-on': activeMid === mg.key }" @click="jumpToMid(activeRootGroup, mg)">
+              {{ mg.name }}<span>{{ mg.items.length }}</span>
+            </button>
+          </div>
         </nav>
 
         <section v-for="g in rootGroups" :key="g.key" :id="rootDomId(g)" class="root-section">
@@ -408,7 +448,7 @@ export const CatalogView = {
             <span class="root-name">{{ g.name }}</span>
             <span class="root-count mono">{{ g.total }}</span>
           </div>
-          <div class="prod-group" v-for="mg in g.mids" :key="mg.key">
+          <div class="prod-group" v-for="mg in g.mids" :key="mg.key" :id="midDomId(mg)">
             <div class="pg-head">
               <span class="pg-dot"></span>
               <span class="pg-name">{{ mg.name }}</span>
