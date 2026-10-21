@@ -316,6 +316,9 @@
 /* 宽版抽屉：iPad / 桌面用来放三栏分类 */
 .sheet-wide { max-width: 900px; }
 .sheet-wide .sheet-body { padding: 10px 22px 22px; }
+/* 超宽抽屉：批量导入的在线表格 */
+.sheet-xwide { max-width: 1120px; }
+.sheet-xwide .sheet-body { padding: 10px 22px 22px; }
 @keyframes sheet-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
 @keyframes fade-in  { from { opacity: 0; } to { opacity: 1; } }
 

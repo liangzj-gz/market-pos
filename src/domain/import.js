@@ -253,6 +253,19 @@ export function parseProductImport(text, db) {
   };
 }
 
+/* Excel 工作表矩阵 → TSV 文本，复用上面的解析规则。
+   单元格里的制表符/换行会破坏行列结构，先压成空格 */
+export function matrixToTsv(matrix) {
+  return (matrix || [])
+    .map(row => (row || [])
+      .map(cell => String(cell === null || cell === undefined ? '' : cell)
+        .replace(/\t/g, ' ')
+        .replace(/\r?\n/g, ' '))
+      .join('\t'))
+    .filter(line => line.trim())
+    .join('\n');
+}
+
 /* 界面里展示解析预览时的示例文本，和解析规则保持一致 */
 export const IMPORT_SAMPLE = [
   '手工皂\t18\t6\t5\tA-1\tSOAP01\t洗护>皂类\t手工/送礼',

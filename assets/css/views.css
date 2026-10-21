@@ -1230,3 +1230,60 @@
 .bi-check input { flex: none; margin-top: 3px; accent-color: var(--blue); }
 
 .import-entry { margin-bottom: 12px; }
+
+.bi-modes { margin-bottom: 14px; }
+.bi-file.is-loading { opacity: .6; pointer-events: none; }
+
+.bi-sheet-toolbar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 2px 0 10px;
+}
+.bi-sheet-scroll {
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--stroke); border-radius: var(--r-sm);
+  background: rgba(255, 255, 255, .5);
+}
+.bi-sheet {
+  width: max-content; min-width: 1000px;
+  border-collapse: separate; border-spacing: 0;
+}
+.bi-sheet th {
+  padding: 8px 6px; text-align: left; white-space: nowrap;
+  font-size: var(--fs-xs); font-weight: 600; color: var(--label-3);
+  background: rgba(255, 255, 255, .72);
+  border-bottom: 1px solid var(--stroke);
+}
+.bi-sheet td { padding: 4px; border-bottom: 1px solid var(--stroke); vertical-align: top; }
+.bi-sheet tbody tr:last-child td { border-bottom: none; }
+.bi-sheet .bi-cell {
+  min-height: 32px; height: 32px; padding: 4px 7px;
+  font-size: 14px; border-radius: 8px;
+}
+.bi-col-name { width: 180px; }
+.bi-col-price { width: 82px; }
+.bi-col-stock { width: 92px; }
+.bi-col-location { width: 90px; }
+.bi-col-sku { width: 120px; }
+.bi-col-category { width: 150px; }
+.bi-col-tags { width: 130px; }
+.bi-col-act { width: 40px; text-align: center; }
+.bi-sheet-no { width: 30px; text-align: right !important; color: var(--label-4); }
+.bi-sheet td.bi-sheet-no { padding: 12px 4px 0 0 !important; }
+.bi-required { color: var(--red); }
+.bi-sheet tr.is-bad .bi-cell { border-color: var(--red-line); background: var(--red-soft); }
+.bi-sheet tr.is-warn .bi-cell { border-color: var(--amber-line); background: var(--amber-soft); }
+.bi-sheet-issue td {
+  padding: 0 6px 7px; border-bottom: 1px solid var(--stroke);
+  color: var(--red); font-size: 11.5px;
+}
+.bi-sheet-issue.is-warn td { color: var(--amber); }
+.bi-add-row { margin-top: 8px; }
+.bi-sheet-stat { margin-top: 10px; }
+.bi-sheet-empty { margin-top: 8px; }
+.bi-sheet-hint { display: none; }
+
+@media (max-width: 899px) {
+  .bi-sheet .bi-cell { font-size: 16px; }
+  .bi-sheet-scroll { margin-right: -2px; margin-left: -2px; }
+  .bi-sheet-hint { display: block; margin: 0 0 8px; }
+}

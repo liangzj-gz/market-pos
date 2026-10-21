@@ -4,7 +4,7 @@ import {
   rootCategories, categoryRows, tagLibrary, childrenIn, categoryProductCount
 } from '../data/store.js';
 import { money } from '../util/format.js';
-import { parseProductImport, IMPORT_SAMPLE, IMPORT_COLUMNS } from '../domain/import.js';
+import { parseProductImport, matrixToTsv, IMPORT_SAMPLE, IMPORT_COLUMNS } from '../domain/import.js';
 import { UiSheet } from '../components/index.js';
 
 const EMPTY_PRODUCT = () => ({
@@ -12,6 +12,27 @@ const EMPTY_PRODUCT = () => ({
   list_price: '', cost_price: '', safety_stock: 0, location: '', barcode: '',
   status: 'on_sale', tags: [], tagInput: ''
 });
+
+/* Excel 解析组件按需加载，没打开批量导入就不下载 861KB 的 SheetJS */
+let xlsxPromise = null;
+function ensureXlsx() {
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  if (!xlsxPromise) {
+    xlsxPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = './assets/vendor/xlsx.full.min.js';
+      script.onload = () => resolve(window.XLSX);
+      script.onerror = () => {
+        xlsxPromise = null;
+        reject(new Error('Excel 解析组件加载失败，请检查网络'));
+      };
+      document.head.appendChild(script);
+    });
+  }
+  return xlsxPromise;
+}
+
+const SHEET_FIELDS = ['name', 'list_price', 'cost_price', 'safety_stock', 'location', 'sku_code', 'category', 'tags'];
 
 export const CatalogView = {
   name: 'CatalogView',
@@ -43,7 +64,11 @@ export const CatalogView = {
       importText: '',
       importFile: '',
       importHelp: false,
-      autoCreateCategory: false
+      autoCreateCategory: false,
+      importMode: 'file',
+      sheetRows: [],
+      sheetSeq: 0,
+      excelLoading: false
     };
   },
   computed: {
@@ -147,8 +172,48 @@ export const CatalogView = {
     },
     importColumns() { return IMPORT_COLUMNS; },
     importSample() { return IMPORT_SAMPLE; },
+    sheetFilledRows() {
+      return this.sheetRows.filter(row =>
+        SHEET_FIELDS.some(field => String(row[field] === null || row[field] === undefined ? '' : row[field]).trim() !== '')
+      );
+    },
+    sheetText() {
+      return this.sheetFilledRows.map(row =>
+        IMPORT_COLUMNS.map(col => String(row[col.key] === null || row[col.key] === undefined ? '' : row[col.key])
+          .replace(/\t/g, ' ')
+          .replace(/\r?\n/g, ' ')).join('\t')
+      ).join('\n');
+    },
+    sheetParsed() {
+      if (!this.sheetFilledRows.length) return null;
+      return parseProductImport(this.sheetText, store.db);
+    },
+    sheetParsedByKey() {
+      const map = {};
+      if (!this.sheetParsed) return map;
+      this.sheetFilledRows.forEach((row, i) => { map[row.key] = this.sheetParsed.rows[i] || null; });
+      return map;
+    },
+    categoryPaths() {
+      const cats = store.db.categories;
+      const roots = new Map(cats.filter(c => !c.parent_id).map(c => [c.id, c.name]));
+      const out = [];
+      cats.forEach(c => {
+        if (c.parent_id && roots.has(c.parent_id)) out.push(roots.get(c.parent_id) + '>' + c.name);
+        else if (!c.parent_id) out.push(c.name);
+      });
+      return out.sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
+    },
+    sheetReady() {
+      return this.sheetParsed ? this.sheetParsed.okCount : 0;
+    },
     importReady() {
+      if (this.importMode === 'table') return this.sheetReady;
       return this.importParsed ? this.importParsed.okCount : 0;
+    },
+    importHasCategoryMiss() {
+      const parsed = this.importMode === 'table' ? this.sheetParsed : this.importParsed;
+      return !!(parsed && parsed.rows.some(r => r.categoryMiss));
     }
   },
   watch: {
@@ -290,27 +355,129 @@ export const CatalogView = {
     /* ---------- 批量导入 ---------- */
     openImport() {
       this.importer = true;
+      this.importMode = 'file';
       this.importText = '';
       this.importFile = '';
       this.importHelp = false;
       this.autoCreateCategory = false;
+      this.excelLoading = false;
+      this.resetSheetRows();
+      ensureXlsx().catch(() => {});
     },
     closeImport() {
       if (this.saving) return;
       this.importer = false;
     },
-    onImportFile(ev) {
+    newSheetRow(data = {}) {
+      return {
+        key: ++this.sheetSeq,
+        name: '', list_price: '', cost_price: '', safety_stock: '',
+        location: '', sku_code: '', category: '', tags: '',
+        ...data
+      };
+    },
+    addSheetRow() { this.sheetRows.push(this.newSheetRow()); },
+    removeSheetRow(row) {
+      const index = this.sheetRows.indexOf(row);
+      if (index >= 0) this.sheetRows.splice(index, 1);
+      if (!this.sheetRows.length) this.sheetRows.push(this.newSheetRow());
+    },
+    resetSheetRows() {
+      this.sheetSeq = 0;
+      this.sheetRows = Array.from({ length: 5 }, () => this.newSheetRow());
+    },
+    fillSheetSample() {
+      const categories = this.categoryPaths;
+      const category = categories.find(p => !p.startsWith('其他')) || categories[0] || '';
+      this.sheetSeq = 0;
+      this.sheetRows = [
+        this.newSheetRow({
+          name: '示例-手工皂', list_price: '18', cost_price: '6', safety_stock: '5',
+          location: 'A-1', category, tags: '手工/送礼'
+        }),
+        this.newSheetRow({
+          name: '示例-帆布包', list_price: '39', cost_price: '12', safety_stock: '3',
+          location: 'B-2', category, tags: '热销'
+        })
+      ];
+    },
+    sheetRowParsed(row) { return this.sheetParsedByKey[row.key] || null; },
+    sheetRowIssue(row) {
+      const parsed = this.sheetRowParsed(row);
+      return parsed ? this.rowIssue(parsed) : '';
+    },
+    sheetRowBad(row) {
+      const parsed = this.sheetRowParsed(row);
+      return !!(parsed && parsed.errors.length);
+    },
+    sheetRowWarn(row) {
+      const parsed = this.sheetRowParsed(row);
+      return !!(parsed && !parsed.errors.length && parsed.warns.length);
+    },
+    async onImportFile(ev) {
       const file = ev.target.files && ev.target.files[0];
       ev.target.value = '';
       if (!file) return;
-      if (file.size > 512 * 1024) { toast('文件太大了，请控制在 500KB 以内', 'warn'); return; }
-      const reader = new FileReader();
-      reader.onload = () => {
-        this.importText = String(reader.result || '');
+      const ext = (file.name.split('.').pop() || '').toLowerCase();
+      const isSpreadsheet = ext === 'xlsx' || ext === 'xls';
+      if (file.size > (isSpreadsheet ? 5 : 1) * 1024 * 1024) {
+        toast('文件太大了，请控制在 ' + (isSpreadsheet ? '5MB' : '1MB') + ' 以内', 'warn');
+        return;
+      }
+      if (!isSpreadsheet) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          this.importText = String(reader.result || '');
+          this.importFile = file.name;
+        };
+        reader.onerror = () => toast('读取文件失败', 'warn');
+        reader.readAsText(file, 'utf-8');
+        return;
+      }
+      this.excelLoading = true;
+      try {
+        const XLSX = await ensureXlsx();
+        const buffer = await file.arrayBuffer();
+        const workbook = XLSX.read(buffer, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const sheet = sheetName ? workbook.Sheets[sheetName] : null;
+        if (!sheet) throw new Error('Excel 里没有工作表');
+        const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+        const text = matrixToTsv(matrix);
+        if (!text.trim()) throw new Error('这个工作表里没有读到内容');
+        this.importText = text;
         this.importFile = file.name;
-      };
-      reader.onerror = () => toast('读取文件失败', 'warn');
-      reader.readAsText(file, 'utf-8');
+        toast('已读取「' + sheetName + '」' + (workbook.SheetNames.length > 1 ? '（默认第一个工作表）' : ''), 'ok');
+      } catch (e) {
+        toast(e && e.message ? e.message : '读取 Excel 失败', 'warn');
+      } finally {
+        this.excelLoading = false;
+      }
+    },
+    async downloadTemplate() {
+      try {
+        const XLSX = await ensureXlsx();
+        const headers = IMPORT_COLUMNS.map(c => c.label);
+        const categories = this.categoryPaths;
+        const sampleCategory = categories.find(p => !p.startsWith('其他')) || categories[0] || '';
+        const sheet = XLSX.utils.aoa_to_sheet([
+          headers,
+          ['示例-手工皂', '18', '6', '5', 'A-1', '', sampleCategory, '手工/送礼']
+        ]);
+        sheet['!cols'] = headers.map((h, i) => ({ wch: [18, 10, 10, 12, 10, 14, 20, 18][i] || 12 }));
+        const helpRows = [['列名', '说明']].concat(IMPORT_COLUMNS.map(c => [c.label, c.hint]));
+        helpRows.push(['分类格式', '大类>中类，例如 ' + (sampleCategory || '挂件饰品>挂件')]);
+        helpRows.push(['标签格式', '多个标签用 / 或逗号分隔']);
+        const help = XLSX.utils.aoa_to_sheet(helpRows);
+        help['!cols'] = [{ wch: 14 }, { wch: 42 }];
+        const book = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(book, sheet, '商品导入模板');
+        XLSX.utils.book_append_sheet(book, help, '填写说明');
+        XLSX.writeFile(book, '商品导入模板.xlsx');
+        toast('Excel 模板已下载', 'ok');
+      } catch (e) {
+        toast(e && e.message ? e.message : '生成模板失败', 'warn');
+      }
     },
     fillImportSample() {
       this.importText = IMPORT_SAMPLE;
@@ -322,10 +489,10 @@ export const CatalogView = {
       return '';
     },
     doImport() {
-      const parsed = this.importParsed;
+      const parsed = this.importMode === 'table' ? this.sheetParsed : this.importParsed;
       if (!parsed) return;
       const rows = parsed.rows.filter(r => !r.errors.length);
-      if (!rows.length) { toast('没有可导入的行，先按右侧提示改一下', 'warn'); return; }
+      if (!rows.length) { toast('没有可导入的行，先按提示改一下', 'warn'); return; }
       this.saving = true;
       const res = actions.importProducts(rows, { autoCreateCategory: this.autoCreateCategory });
       this.saving = false;
@@ -339,6 +506,7 @@ export const CatalogView = {
       this.importer = false;
       this.importText = '';
       this.importFile = '';
+      this.resetSheetRows();
       toast(parsed.badCount
         ? '已导入 ' + okCount + ' 个，另有 ' + parsed.badCount + ' 行格式有问题已跳过'
         : '已导入 ' + okCount + ' 个商品', parsed.badCount ? 'warn' : 'ok');
@@ -623,69 +791,151 @@ export const CatalogView = {
   </template>
 
   <!-- 批量导入商品 -->
-  <ui-sheet v-if="importer" title="批量导入商品" @close="closeImport">
-    <div class="bi-intro">
-      从 Excel / WPS 里框选复制，整块粘到下面就行，一行一个商品。只有<b>商品名称</b>是必填的，其余列能填就填。
+  <ui-sheet v-if="importer" title="批量导入商品" xwide @close="closeImport">
+    <div class="seg bi-modes" role="tablist">
+      <button class="seg-btn" :class="{ 'is-on': importMode === 'file' }" role="tab"
+              :aria-selected="importMode === 'file'" @click="importMode = 'file'">Excel 文件导入</button>
+      <button class="seg-btn" :class="{ 'is-on': importMode === 'table' }" role="tab"
+              :aria-selected="importMode === 'table'" @click="importMode = 'table'">在线表格录入</button>
     </div>
 
-    <div class="bi-toolbar">
-      <label class="btn btn-sm bi-file">
-        <ui-icon name="boxIn" :size="16" /> 选 CSV 文件
-        <input type="file" accept=".csv,.txt,text/csv,text/plain" @change="onImportFile">
-      </label>
-      <button type="button" class="btn btn-sm" @click="fillImportSample">填入示例</button>
-      <button type="button" class="btn btn-sm btn-quiet" @click="importHelp = !importHelp">
-        {{ importHelp ? '收起列说明' : '列的格式' }}
-      </button>
-    </div>
-
-    <div class="bi-help" v-if="importHelp">
-      <div class="bi-help-row" v-for="c in importColumns" :key="c.key">
-        <b>{{ c.label }}</b>
-        <span class="xs muted">{{ c.hint }}</span>
+    <template v-if="importMode === 'file'">
+      <div class="bi-intro">
+        支持 <b>.xlsx / .xls / .csv</b>，也可以从 Excel / WPS 里框选复制后直接粘贴。只有<b>商品名称</b>是必填的，其余列能填就填。
       </div>
-      <div class="field-hint">
-        列的顺序就是上表顺序；首行如果写「名称 / 售价 / 成本价」这类表头会自动识别，不用记顺序。
-        分类用 <code>大类&gt;中类</code> 表示，标签多个用 <code>/</code> 分隔。
-      </div>
-    </div>
 
-    <div class="field">
-      <label>粘贴内容<span class="xs muted" v-if="importFile"> · {{ importFile }}</span></label>
-      <textarea class="input input-mono bi-textarea" v-model="importText" rows="7"
-                :placeholder="importSample" spellcheck="false"></textarea>
-    </div>
-
-    <div class="bi-preview" v-if="importParsed">
-      <div class="bi-stat">
-        <span class="bi-stat-ok">可导入 {{ importParsed.okCount }}</span>
-        <span class="bi-stat-bad" v-if="importParsed.badCount">{{ importParsed.badCount }} 行有错</span>
-        <span class="bi-stat-warn" v-if="importParsed.warnCount">{{ importParsed.warnCount }} 行需留意</span>
-        <span class="grow"></span>
-        <span class="xs muted">
-          {{ importParsed.separator === 'tab' ? '按制表符分列' : importParsed.separator === 'pipe' ? '按竖线分列' : importParsed.separator === 'comma' ? '按逗号分列' : '整行当名称' }}{{ importParsed.headerSkipped ? ' · 已跳过表头' : '' }}
-        </span>
+      <div class="bi-toolbar">
+        <label class="btn btn-sm bi-file" :class="{ 'is-loading': excelLoading }">
+          <ui-icon name="boxIn" :size="16" /> {{ excelLoading ? '正在读取…' : '选择 Excel / CSV 文件' }}
+          <input type="file" accept=".xlsx,.xls,.csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,text/plain"
+                 @change="onImportFile" :disabled="excelLoading">
+        </label>
+        <button type="button" class="btn btn-sm" @click="downloadTemplate">下载模板</button>
+        <button type="button" class="btn btn-sm" @click="fillImportSample">填入示例</button>
+        <button type="button" class="btn btn-sm btn-quiet" @click="importHelp = !importHelp">
+          {{ importHelp ? '收起列说明' : '列的格式' }}
+        </button>
       </div>
-      <div class="bi-rows">
-        <div class="bi-row" v-for="r in importParsed.rows" :key="r.line"
-             :class="{ 'is-bad': r.errors.length, 'is-warn': !r.errors.length && r.warns.length }">
-          <span class="bi-line mono xs">{{ r.line }}</span>
-          <div class="grow">
-            <div class="bi-name">{{ r.name || '（没读到名称）' }}</div>
-            <div class="xs muted bi-sub">
-              <span v-if="r.categoryLabel">{{ r.categoryLabel }}</span>
-              <span v-if="r.list_price">{{ money(r.list_price) }}</span>
-              <span v-if="r.safety_stock">预警 {{ r.safety_stock }}</span>
-              <span v-if="r.location">货位 {{ r.location }}</span>
-              <span v-if="r.tags.length">#{{ r.tags.join(' #') }}</span>
+
+      <div class="bi-help" v-if="importHelp">
+        <div class="bi-help-row" v-for="c in importColumns" :key="c.key">
+          <b>{{ c.label }}</b>
+          <span class="xs muted">{{ c.hint }}</span>
+        </div>
+        <div class="field-hint">
+          列的顺序就是上表顺序；首行如果写「名称 / 售价 / 成本价」这类表头会自动识别，不用记顺序。
+          分类用 <code>大类&gt;中类</code> 表示，标签多个用 <code>/</code> 分隔。
+        </div>
+      </div>
+
+      <div class="field">
+        <label>粘贴内容<span class="xs muted" v-if="importFile"> · {{ importFile }}</span></label>
+        <textarea class="input input-mono bi-textarea" v-model="importText" rows="7"
+                  :placeholder="importSample" spellcheck="false"></textarea>
+      </div>
+
+      <div class="bi-preview" v-if="importParsed">
+        <div class="bi-stat">
+          <span class="bi-stat-ok">可导入 {{ importParsed.okCount }}</span>
+          <span class="bi-stat-bad" v-if="importParsed.badCount">{{ importParsed.badCount }} 行有错</span>
+          <span class="bi-stat-warn" v-if="importParsed.warnCount">{{ importParsed.warnCount }} 行需留意</span>
+          <span class="grow"></span>
+          <span class="xs muted">
+            {{ importParsed.separator === 'tab' ? '按制表符分列' : importParsed.separator === 'pipe' ? '按竖线分列' : importParsed.separator === 'comma' ? '按逗号分列' : '整行当名称' }}{{ importParsed.headerSkipped ? ' · 已跳过表头' : '' }}
+          </span>
+        </div>
+        <div class="bi-rows">
+          <div class="bi-row" v-for="r in importParsed.rows" :key="r.line"
+               :class="{ 'is-bad': r.errors.length, 'is-warn': !r.errors.length && r.warns.length }">
+            <span class="bi-line mono xs">{{ r.line }}</span>
+            <div class="grow">
+              <div class="bi-name">{{ r.name || '（没读到名称）' }}</div>
+              <div class="xs muted bi-sub">
+                <span v-if="r.categoryLabel">{{ r.categoryLabel }}</span>
+                <span v-if="r.list_price">{{ money(r.list_price) }}</span>
+                <span v-if="r.safety_stock">预警 {{ r.safety_stock }}</span>
+                <span v-if="r.location">货位 {{ r.location }}</span>
+                <span v-if="r.tags.length">#{{ r.tags.join(' #') }}</span>
+              </div>
+              <div class="xs bi-issue" v-if="rowIssue(r)">{{ rowIssue(r) }}</div>
             </div>
-            <div class="xs bi-issue" v-if="rowIssue(r)">{{ rowIssue(r) }}</div>
           </div>
         </div>
       </div>
-    </div>
+    </template>
 
-    <label class="bi-check" v-if="importParsed && importParsed.rows.some(r => r.categoryMiss)">
+    <template v-else>
+      <div class="bi-intro">
+        像表格一样逐行填写，一行一个商品。商品名称必填；分类写「大类&gt;中类」，不存在的分类可在下方勾选自动创建。
+      </div>
+
+      <div class="bi-sheet-toolbar">
+        <span class="xs muted">已填写 {{ sheetFilledRows.length }} 行</span>
+        <span class="grow"></span>
+        <button class="btn btn-sm" @click="fillSheetSample">填入示例</button>
+        <button class="btn btn-sm" @click="addSheetRow"><ui-icon name="plus" :size="14" /> 加一行</button>
+        <button class="btn btn-sm btn-quiet" @click="resetSheetRows">清空</button>
+      </div>
+      <div class="xs muted bi-sheet-hint">手机上可左右滑动表格，填写后面的售价、库存、分类等列。</div>
+
+      <div class="bi-sheet-scroll">
+        <table class="bi-sheet">
+          <thead>
+            <tr>
+              <th class="bi-sheet-no">#</th>
+              <th class="bi-col-name">商品名称 <b class="bi-required">*</b></th>
+              <th class="bi-col-price">售价</th>
+              <th class="bi-col-price">成本价</th>
+              <th class="bi-col-stock">安全库存</th>
+              <th class="bi-col-location">货位</th>
+              <th class="bi-col-sku">SKU</th>
+              <th class="bi-col-category">分类</th>
+              <th class="bi-col-tags">标签</th>
+              <th class="bi-col-act"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <template v-for="(row, i) in sheetRows" :key="row.key">
+              <tr :class="{ 'is-bad': sheetRowBad(row), 'is-warn': sheetRowWarn(row) }">
+                <td class="bi-sheet-no mono">{{ i + 1 }}</td>
+                <td><input class="input bi-cell" v-model="row.name" placeholder="商品名称（必填）" aria-label="商品名称"></td>
+                <td><input class="input bi-cell" type="number" inputmode="decimal" step="0.01" v-model="row.list_price" placeholder="0" aria-label="售价"></td>
+                <td><input class="input bi-cell" type="number" inputmode="decimal" step="0.01" v-model="row.cost_price" placeholder="选填" aria-label="成本价"></td>
+                <td><input class="input bi-cell" type="number" inputmode="numeric" min="0" v-model="row.safety_stock" placeholder="0" aria-label="安全库存"></td>
+                <td><input class="input bi-cell" v-model="row.location" placeholder="如 A-1" aria-label="货位"></td>
+                <td><input class="input bi-cell" v-model="row.sku_code" placeholder="留空自动生成" aria-label="SKU"></td>
+                <td><input class="input bi-cell" v-model="row.category" list="import-categories" placeholder="大类>中类" aria-label="分类"></td>
+                <td><input class="input bi-cell" v-model="row.tags" placeholder="热销/新品" aria-label="标签"></td>
+                <td class="bi-col-act">
+                  <button class="btn btn-sm btn-quiet" @click="removeSheetRow(row)" aria-label="删除这一行">
+                    <ui-icon name="close" :size="14" />
+                  </button>
+                </td>
+              </tr>
+              <tr v-if="sheetRowIssue(row)" class="bi-sheet-issue" :class="{ 'is-warn': sheetRowWarn(row) }">
+                <td></td>
+                <td :colspan="9" class="bi-issue">{{ sheetRowIssue(row) }}</td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+      <button class="btn btn-sm bi-add-row" @click="addSheetRow"><ui-icon name="plus" :size="14" /> 再加一行</button>
+      <datalist id="import-categories">
+        <option v-for="p in categoryPaths" :key="p" :value="p"></option>
+      </datalist>
+
+      <div class="bi-stat bi-sheet-stat" v-if="sheetParsed">
+        <span class="bi-stat-ok">可导入 {{ sheetParsed.okCount }}</span>
+        <span class="bi-stat-bad" v-if="sheetParsed.badCount">{{ sheetParsed.badCount }} 行有错</span>
+        <span class="bi-stat-warn" v-if="sheetParsed.warnCount">{{ sheetParsed.warnCount }} 行需留意</span>
+        <span class="grow"></span>
+        <span class="xs muted">只导入没有错误的行</span>
+      </div>
+      <div class="xs muted bi-sheet-empty" v-else>填写几行后，这里会显示校验结果。</div>
+    </template>
+
+    <label class="bi-check" v-if="importHasCategoryMiss">
       <input type="checkbox" v-model="autoCreateCategory">
       <span>分类不存在的自动建出来（按「大类&gt;中类」逐级创建）</span>
     </label>
