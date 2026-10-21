@@ -15,7 +15,7 @@ import {
   createOrder, confirmOrder, cancelOrder, stockIn, setStock,
   upsertProduct, toggleProductStatus, upsertCombo, deleteCombo,
   resolveAlert, buildStats, syncAlerts, expandCombo, computeTotal,
-  buildCategoryTree, categoryById, categoryPath, categoryLabel, categoryLevel,
+  buildCategoryTree, collapseCategoryDepth, categoryById, categoryPath, categoryLabel, categoryLevel,
   childrenOf, categoryProductCount, upsertCategory,
   deleteCategory as deleteCategoryRule,
   addTag as addTagRule, renameTag as renameTagRule, deleteTag as deleteTagRule
@@ -56,7 +56,7 @@ export function buildSeedDb() {
     idByName[name] = p.id;
   });
 
-  /* 由系列/品类生成三级分类树，并把每个商品挂到最末级 */
+  /* 由品类生成两级分类树，并把每个商品挂到中类 */
   buildCategoryTree(db);
   db.tags = Array.from(new Set(db.products.flatMap(p => p.tags || [])));
 
@@ -129,6 +129,7 @@ function migrate(db) {
   if (!db.balances || typeof db.balances !== 'object') db.balances = {};
   db.products.forEach(p => { if (!Array.isArray(p.tags)) p.tags = []; });
   buildCategoryTree(db);
+  collapseCategoryDepth(db);
   db.tags = Array.from(new Set([...db.tags, ...db.products.flatMap(p => p.tags || [])]));
   return db;
 }
@@ -401,7 +402,7 @@ export const categoryRows = computed(() => {
         path: categoryLabel(store.db, c.id),
         count: categoryProductCount(store.db, c.id)
       });
-      if (depth < 3) walk(c.id, depth + 1);
+      if (depth < 2) walk(c.id, depth + 1);
     });
   };
   walk(null, 1);

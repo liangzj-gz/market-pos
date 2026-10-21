@@ -552,7 +552,7 @@
 .cie-qty { width: 64px; flex: none; text-align: center; }
 
 /* ============ 分类选择 / 标签编辑 / 分类管理 ============ */
-.cat-picker { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.cat-picker { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 @media (max-width: 520px) {
   .cat-picker { grid-template-columns: 1fr; }
 }
@@ -587,10 +587,10 @@
 }
 .tag-suggest:hover { background: var(--blue-soft); color: var(--blue); }
 
-/* 三栏联动（iPad / 桌面） */
+/* 两栏联动（iPad / 桌面） */
 .cat-cols {
   display: none;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 .cat-col {

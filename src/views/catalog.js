@@ -1,4 +1,4 @@
-/* 商品与套餐：三级分类 + 自定义标签，分类和标签都由用户自己维护 */
+/* 商品与套餐：两级分类 + 自定义标签，分类和标签都由用户自己维护 */
 import {
   store, actions, stockState, productById, toast,
   rootCategories, categoryRows, tagLibrary, childrenIn, categoryProductCount
@@ -7,7 +7,7 @@ import { money } from '../util/format.js';
 import { UiSheet } from '../components/index.js';
 
 const EMPTY_PRODUCT = () => ({
-  id: null, sku_code: '', name: '', cat1: '', cat2: '', cat3: '',
+  id: null, sku_code: '', name: '', cat1: '', cat2: '',
   list_price: '', cost_price: '', safety_stock: 0, location: '', barcode: '',
   status: 'on_sale', tags: [], tagInput: ''
 });
@@ -96,14 +96,12 @@ export const CatalogView = {
     },
     col1() { return this.deco(childrenIn(null)); },
     col2() { return this.catPath[0] ? this.deco(childrenIn(this.catPath[0])) : []; },
-    col3() { return this.catPath[1] ? this.deco(childrenIn(this.catPath[1])) : []; },
-    columns() { return [this.col1, this.col2, this.col3]; },
+    columns() { return [this.col1, this.col2]; },
     drillList() {
       const parent = this.catPath.length ? this.catPath[this.catPath.length - 1] : null;
       return this.deco(childrenIn(parent));
     },
     cat2Options() { return this.prodForm && this.prodForm.cat1 ? childrenIn(this.prodForm.cat1) : []; },
-    cat3Options() { return this.prodForm && this.prodForm.cat2 ? childrenIn(this.prodForm.cat2) : []; },
     suggestedTags() {
       if (!this.prodForm) return [];
       return this.tags.map(t => t.name).filter(n => !this.prodForm.tags.includes(n)).slice(0, 6);
@@ -131,7 +129,8 @@ export const CatalogView = {
     },
     subCatOf(p) {
       const path = this.pathArr(p.category_id).slice(1).map(c => c.name);
-      return path.filter((n, i) => n !== path[i - 1]).join(' / ') || '未分类';
+      const sub = path.filter((n, i) => n !== path[i - 1]).join(' / ');
+      return sub || (p.category_id ? '未细分' : '未分类');
     },
 
     /* ---------- 商品表单 ---------- */
@@ -144,15 +143,13 @@ export const CatalogView = {
         id: p.id, sku_code: p.sku_code, name: p.name,
         cat1: path[0] ? path[0].id : '',
         cat2: path[1] ? path[1].id : '',
-        cat3: path[2] ? path[2].id : '',
         list_price: p.list_price,
         cost_price: p.cost_price === null || p.cost_price === undefined ? '' : p.cost_price,
         safety_stock: p.safety_stock, location: p.location || '', barcode: p.barcode || '',
         status: p.status, tags: [...(p.tags || [])], tagInput: ''
       };
     },
-    onCat1() { this.prodForm.cat2 = ''; this.prodForm.cat3 = ''; },
-    onCat2() { this.prodForm.cat3 = ''; },
+    onCat1() { this.prodForm.cat2 = ''; },
     addFormTag() {
       const v = String(this.prodForm.tagInput || '').trim().replace(/^#/, '');
       this.prodForm.tagInput = '';
@@ -167,7 +164,7 @@ export const CatalogView = {
       this.saving = true;
       const res = actions.saveProduct({
         ...f,
-        category_id: f.cat3 || f.cat2 || f.cat1 || null,
+        category_id: f.cat2 || f.cat1 || null,
         tags: f.tags
       });
       this.saving = false;
@@ -194,7 +191,7 @@ export const CatalogView = {
     },
     pick(depth, id) { this.catPath = [...this.catPath.slice(0, depth), id]; },
     parentAt(depth) { return depth === 0 ? null : (this.catPath[depth - 1] || null); },
-    canAdd(depth) { return depth === 0 || !!this.parentAt(depth); },
+    canAdd(depth) { return depth < 2 && (depth === 0 || !!this.parentAt(depth)); },
     addIn(depth) {
       if (!this.canAdd(depth)) return;
       this.catEdit = { id: null, parentId: this.parentAt(depth), name: '', depth };
@@ -427,13 +424,9 @@ export const CatalogView = {
             <option value="">未分类</option>
             <option v-for="c in rootCats" :key="c.id" :value="c.id">{{ c.name }}</option>
           </select>
-          <select class="select" v-model="prodForm.cat2" @change="onCat2" :disabled="!prodForm.cat1" aria-label="中类">
+          <select class="select" v-model="prodForm.cat2" :disabled="!prodForm.cat1" aria-label="中类">
             <option value="">不选中类</option>
             <option v-for="c in cat2Options" :key="c.id" :value="c.id">{{ c.name }}</option>
-          </select>
-          <select class="select" v-model="prodForm.cat3" :disabled="!prodForm.cat2" aria-label="小类">
-            <option value="">不选小类</option>
-            <option v-for="c in cat3Options" :key="c.id" :value="c.id">{{ c.name }}</option>
           </select>
         </div>
         <div class="field-hint">商品挂在最后选中的一级；分类不够用就到「管理分类」里加</div>
@@ -555,7 +548,7 @@ export const CatalogView = {
       <div class="cat-cols">
         <section class="cat-col" v-for="(col, ci) in columns" :key="ci">
           <header class="cat-col-head">
-            <span>{{ ['大类', '中类', '小类'][ci] }}</span>
+            <span>{{ ['大类', '中类'][ci] }}</span>
             <em class="mono">{{ col.length }}</em>
           </header>
           <div class="cat-col-list">
@@ -587,7 +580,7 @@ export const CatalogView = {
             </div>
 
             <div class="empty-inline" v-if="!col.length && !(catEdit && catEdit.id === null && catEdit.depth === ci)">
-              {{ ci === 0 ? '还没有分类' : ci === 1 ? '先选一个大类' : '先选一个中类' }}
+              {{ ci === 0 ? '还没有分类' : '先选一个大类' }}
             </div>
           </div>
           <footer class="cat-col-foot">
@@ -645,7 +638,7 @@ export const CatalogView = {
           </div>
 
           <div class="empty-inline" v-if="!drillList.length && !(catEdit && catEdit.id === null && catEdit.depth === catPath.length)">
-            {{ catPath.length ? '这一层还没有分类' : '还没有分类，先建一个' }}
+            {{ catPath.length >= 2 ? '已经到最末级' : catPath.length ? '这一层还没有分类' : '还没有分类，先建一个' }}
           </div>
         </div>
 
@@ -655,7 +648,7 @@ export const CatalogView = {
             <ui-icon name="plus" :size="14" /> 新增分类
           </button>
         </div>
-        <p class="xs muted" style="margin-top:8px">最多三级，商品挂在最后选中的一级</p>
+        <p class="xs muted" style="margin-top:8px">最多两级，商品挂在最后选中的一级</p>
       </div>
     </template>
 

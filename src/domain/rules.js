@@ -31,7 +31,7 @@ const fail = (code, message) => { throw new BizError(code, message); };
 export function createDb() {
   return {
     products: [],
-    categories: [],      // { id, name, parent_id, sort } 最多三级
+    categories: [],      // { id, name, parent_id, sort } 最多两级
     tags: [],            // 标签词库（字符串）
     combos: [],          // { ...combo, items: [{product_id, quantity}] }
     orders: [],
@@ -424,7 +424,7 @@ export function setStock(db, productId, counted, reason, at) {
   return { changed: true, before, balance: balanceOf(db, productId), diff, first: false };
 }
 
-/* ---------- 分类树（最多三级，用户自己维护） ---------- */
+/* ---------- 分类树（最多两级，用户自己维护） ---------- */
 export const categoryById = (db, id) => db.categories.find(c => c.id === id) || null;
 
 export function categoryPath(db, id) {
@@ -465,7 +465,7 @@ export function upsertCategory(db, data) {
   const parent = data.parent_id ? categoryById(db, data.parent_id) : null;
   if (data.parent_id && !parent) fail('CATEGORY_NOT_FOUND', '上级分类不存在');
   const depth = parent ? categoryLevel(db, parent.id) + 1 : 1;
-  if (depth > 3) fail('CATEGORY_DEPTH', '最多支持三级分类');
+  if (depth > 2) fail('CATEGORY_DEPTH', '最多支持两级分类');
   const siblings = db.categories.filter(c =>
     (c.parent_id || null) === (parent ? parent.id : null) && c.id !== data.id);
   if (siblings.some(c => c.name === name)) fail('CATEGORY_DUP', '同级下已有「' + name + '」');
@@ -534,7 +534,7 @@ export function deleteTag(db, name) {
   return { deleted: true };
 }
 
-/* 由旧的「系列 / 品类」文本生成三级分类树：品类 → 中类，系列 → 小类 */
+/* 由旧的「品类」文本生成两级分类树：大类 → 中类，商品挂在中类 */
 const L1_GROUPS = [
   { name: '挂件饰品', categories: ['挂件', '小件', '摆件'] },
   { name: '吧唧徽章', categories: ['吧唧', '吧唧立牌'] },
@@ -566,23 +566,33 @@ export function buildCategoryTree(db) {
     return otherNode;
   };
   const l2Key = new Map();
-  const l3Key = new Map();
   db.products.forEach(p => {
     const catName = String(p.category || '其他').trim() || '其他';
-    const seriesName = String(p.series || '未分类').trim() || '未分类';
     const l1 = pickL1(catName);
     let l2 = l2Key.get(l1.id + '|' + catName);
     if (!l2) { l2 = mk(catName, l1); l2Key.set(l1.id + '|' + catName, l2); }
-    let leaf = l2;
-    if (seriesName !== catName) {
-      let l3 = l3Key.get(l2.id + '|' + seriesName);
-      if (!l3) { l3 = mk(seriesName, l2); l3Key.set(l2.id + '|' + seriesName, l3); }
-      leaf = l3;
-    }
-    p.category_id = leaf.id;
+    p.category_id = l2.id;
     if (!Array.isArray(p.tags)) p.tags = [];
   });
   return db.categories;
+}
+
+/* 老数据里的小类（第三级）归并到所属中类，保留商品上的系列文本快照 */
+export function collapseCategoryDepth(db) {
+  let changed = false;
+  db.products.forEach(p => {
+    const path = p.category_id ? categoryPath(db, p.category_id) : [];
+    if (path.length > 2 && path[1]) {
+      p.category_id = path[1].id;
+      changed = true;
+    }
+  });
+  const kept = db.categories.filter(c => categoryPath(db, c.id).length <= 2);
+  if (kept.length !== db.categories.length) {
+    db.categories = kept;
+    changed = true;
+  }
+  return changed;
 }
 
 /* ---------- 商品 / 套餐 ---------- */
@@ -593,12 +603,17 @@ export function upsertProduct(db, data) {
   if (categoryId && !path.length) fail('CATEGORY_NOT_FOUND', '分类不存在');
   const deepest = path.length ? path[path.length - 1].name : '';
   const mid = path.length >= 2 ? path[1].name : deepest;
+  const prev = data.id ? productById(db, data.id) : null;
+  /* 只改价格等信息时保留原来的系列快照，避免统计和开单筛选被重置 */
+  const series = prev && (prev.category_id || null) === categoryId && prev.series
+    ? prev.series
+    : (deepest || String(data.series || '').trim() || '未分类');
   const payload = {
     name: String(data.name || '').trim(),
     category_id: categoryId,
     tags,
     /* 系列/品类是分类路径的快照，订单、统计、库存等既有视图继续可用 */
-    series: deepest || String(data.series || '').trim() || '未分类',
+    series,
     category: mid || String(data.category || '').trim() || '其他',
     unit: data.unit || '件',
     list_price: r2(num(data.list_price)),
