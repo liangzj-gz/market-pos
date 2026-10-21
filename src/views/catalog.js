@@ -19,8 +19,8 @@ export const CatalogView = {
     return {
       tab: 'products',
       search: '',
-      cat1: 'all',
       tag: 'all',
+      activeRoot: null,
       prodForm: null,
       comboTarget: null,
       confirmDelete: null,
@@ -46,10 +46,6 @@ export const CatalogView = {
     products() {
       const kw = this.search.trim().toLowerCase();
       return store.db.products.filter(p => {
-        if (this.cat1 !== 'all') {
-          const path = this.pathArr(p.category_id);
-          if (!path.length || path[0].id !== this.cat1) return false;
-        }
         if (this.tag !== 'all' && !(p.tags || []).includes(this.tag)) return false;
         if (!kw) return true;
         const hay = [
@@ -60,25 +56,48 @@ export const CatalogView = {
         return hay.includes(kw);
       }).sort((a, b) => (a.status === b.status ? a.name.localeCompare(b.name, 'zh-Hans-CN') : a.status === 'on_sale' ? -1 : 1));
     },
-    productGroups() {
-      const order = new Map(this.rootCats.map((c, i) => [c.id, i]));
-      const map = new Map();
+    rootGroups() {
+      const rootOrder = new Map(this.rootCats.map((c, i) => [c.id, i]));
+      const midOrder = new Map();
+      this.rootCats.forEach(r => childrenIn(r.id).forEach((c, i) => midOrder.set(c.id, i)));
+      const roots = new Map();
       for (const p of this.products) {
         const path = this.pathArr(p.category_id);
         const root = path[0] || null;
-        const key = root ? root.id : 'none';
-        let group = map.get(key);
+        const mid = path[1] || null;
+        const rootKey = root ? root.id : 'none';
+        let group = roots.get(rootKey);
         if (!group) {
-          group = { key: String(key), id: root ? root.id : null, name: root ? root.name : '未分类', items: [] };
-          map.set(key, group);
+          group = {
+            key: String(rootKey), id: root ? root.id : null,
+            name: root ? root.name : '未分类', total: 0, mids: new Map()
+          };
+          roots.set(rootKey, group);
         }
-        group.items.push(p);
+        group.total += 1;
+        const midKey = mid ? mid.id : 'none';
+        let sub = group.mids.get(midKey);
+        if (!sub) {
+          sub = {
+            key: String(midKey), id: mid ? mid.id : null,
+            name: mid ? mid.name : (root ? '未细分' : '未分类'), items: []
+          };
+          group.mids.set(midKey, sub);
+        }
+        sub.items.push(p);
       }
-      return Array.from(map.values()).sort((a, b) => {
+      const list = Array.from(roots.values()).map(group => ({ ...group, mids: Array.from(group.mids.values()) }));
+      list.forEach(group => group.mids.sort((a, b) => {
         if (a.id === null) return 1;
         if (b.id === null) return -1;
-        return order.get(a.id) - order.get(b.id);
+        return (midOrder.get(a.id) ?? 999) - (midOrder.get(b.id) ?? 999);
+      }));
+      list.sort((a, b) => {
+        if (a.id === null) return 1;
+        if (b.id === null) return -1;
+        return (rootOrder.get(a.id) ?? 999) - (rootOrder.get(b.id) ?? 999);
       });
+      return list;
     },
     combos() { return store.db.combos; },
     stats() {
@@ -86,11 +105,11 @@ export const CatalogView = {
         total: this.allProducts.length,
         onSale: this.allProducts.filter(p => p.status === 'on_sale').length,
         combos: store.db.combos.length,
-        cats: this.rootCats.length,
+        cats: new Set(this.allProducts.map(p => this.pathArr(p.category_id)[0]?.id).filter(Boolean)).size,
         tags: this.tags.length
       };
     },
-    /* 分类管理：桌面上三栏联动，手机上按 breadcrumb 逐层钻取 */
+    /* 分类管理：桌面上两栏联动，手机上按 breadcrumb 逐层钻取 */
     breadcrumb() {
       return this.catPath.map(id => store.db.categories.find(c => c.id === id)).filter(Boolean);
     },
@@ -109,6 +128,25 @@ export const CatalogView = {
     comboFormValid() {
       return this.comboTarget && this.comboTarget.name.trim() && this.comboTarget.items.some(i => i.product_id);
     }
+  },
+  watch: {
+    rootGroups() { this.$nextTick(this.updateActiveRoot); },
+    tab() { this.$nextTick(this.updateActiveRoot); }
+  },
+  mounted() {
+    this._onScroll = () => {
+      if (this._scrollRaf) return;
+      this._scrollRaf = requestAnimationFrame(() => {
+        this._scrollRaf = null;
+        this.updateActiveRoot();
+      });
+    };
+    window.addEventListener('scroll', this._onScroll, { passive: true });
+    this.$nextTick(this.updateActiveRoot);
+  },
+  beforeUnmount() {
+    window.removeEventListener('scroll', this._onScroll);
+    if (this._scrollRaf) cancelAnimationFrame(this._scrollRaf);
   },
   methods: {
     money,
@@ -131,6 +169,26 @@ export const CatalogView = {
       const path = this.pathArr(p.category_id).slice(1).map(c => c.name);
       const sub = path.filter((n, i) => n !== path[i - 1]).join(' / ');
       return sub || (p.category_id ? '未细分' : '未分类');
+    },
+    rootDomId(group) { return 'cat-root-' + (group.id === null ? 'none' : group.id); },
+    jumpToRoot(group) {
+      const el = document.getElementById(this.rootDomId(group));
+      if (!el) return;
+      this.activeRoot = group.key;
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    },
+    updateActiveRoot() {
+      if (this.tab !== 'products') return;
+      const groups = this.rootGroups;
+      if (!groups.length) { this.activeRoot = null; return; }
+      let current = groups[0].key;
+      for (const group of groups) {
+        const el = document.getElementById(this.rootDomId(group));
+        if (el && el.getBoundingClientRect().top <= 130) current = group.key;
+      }
+      const atBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2;
+      if (atBottom) current = groups[groups.length - 1].key;
+      if (this.activeRoot !== current) this.activeRoot = current;
     },
 
     /* ---------- 商品表单 ---------- */
@@ -308,68 +366,90 @@ export const CatalogView = {
 
   <!-- 商品 -->
   <template v-if="tab === 'products'">
-    <div class="card filter-card">
+    <div class="card filter-card catalog-filter-card">
       <div class="card-body">
-        <div class="input-search">
-          <ui-icon name="search" :size="17" />
-          <input class="input" v-model="search" type="search" placeholder="搜名称 / SKU / 分类 / 标签 / 货位" aria-label="搜索商品">
-        </div>
-        <div class="chips-scroll" style="margin-top:10px">
-          <button class="chip" :class="{ 'is-on': cat1 === 'all' }" :aria-pressed="cat1 === 'all'" @click="cat1 = 'all'">全部</button>
-          <button v-for="c in rootCats" :key="c.id" class="chip"
-                  :class="{ 'chip-brand': cat1 === c.id }" :aria-pressed="cat1 === c.id"
-                  @click="cat1 = c.id">{{ c.name }}</button>
-        </div>
-        <div class="chips-scroll" style="margin-top:8px" v-if="tags.length">
-          <button class="chip" :class="{ 'is-on': tag === 'all' }" :aria-pressed="tag === 'all'" @click="tag = 'all'">全部标签</button>
-          <button v-for="t in tags" :key="t.name" class="chip"
-                  :class="{ 'chip-brand': tag === t.name }" :aria-pressed="tag === t.name"
-                  @click="tag = t.name">#{{ t.name }}<span class="chip-count">{{ t.count }}</span></button>
+        <div class="catalog-filter-row">
+          <div class="input-search catalog-search">
+            <ui-icon name="search" :size="17" />
+            <input class="input" v-model="search" type="search" placeholder="搜名称 / SKU / 分类 / 标签 / 货位" aria-label="搜索商品">
+          </div>
+          <div class="chips-scroll catalog-tags" v-if="tags.length">
+            <button class="chip" :class="{ 'is-on': tag === 'all' }" :aria-pressed="tag === 'all'" @click="tag = 'all'">全部标签</button>
+            <button v-for="t in tags" :key="t.name" class="chip"
+                    :class="{ 'chip-brand': tag === t.name }" :aria-pressed="tag === t.name"
+                    @click="tag = t.name">#{{ t.name }}<span class="chip-count">{{ t.count }}</span></button>
+          </div>
         </div>
       </div>
     </div>
 
-    <div class="prod-groups" v-if="products.length">
-      <section class="prod-group" v-for="g in productGroups" :key="g.key">
-        <div class="pg-head">
-          <span class="pg-dot"></span>
-          <span class="pg-name">{{ g.name }}</span>
-          <span class="pg-count mono">{{ g.items.length }}</span>
-          <span class="pg-rule"></span>
-        </div>
-        <div class="prod-grid">
-          <article class="prod-cell" v-for="p in g.items" :key="p.id" :class="{ 'is-off': p.status === 'off_sale' }">
-            <button class="pc-open" @click="openEdit(p)" :aria-label="'编辑商品 ' + p.name">
-              <span class="pc-top">
-                <span class="pc-sku mono">{{ p.sku_code }}</span>
-                <span class="tag tag-gray" v-if="p.status === 'off_sale'">停售</span>
-              </span>
-              <span class="pc-name" :title="p.name">{{ p.name }}</span>
-              <span class="pc-sub xs muted">
-                <span class="truncate">{{ subCatOf(p) }}</span>
-                <span class="nowrap" v-if="p.location">· {{ p.location }}</span>
-              </span>
-              <span class="pc-tags" v-if="(p.tags || []).length">
-                <span v-for="t in p.tags.slice(0, 2)" :key="t" class="tag tag-brand pc-tag">#{{ t }}</span>
-                <span v-if="p.tags.length > 2" class="pc-more muted">+{{ p.tags.length - 2 }}</span>
-              </span>
-            </button>
-            <div class="pc-foot">
-              <b class="pc-price mono" :title="p.cost_price !== null && p.cost_price !== undefined ? '成本 ' + money(p.cost_price) : ''">{{ money(p.list_price) }}</b>
-              <span class="pc-stock xs" :class="'is-' + stockOf(p.id).state"
-                    :title="p.safety_stock > 0 ? '安全库存阈值 ' + p.safety_stock : ''">
-                <span class="pc-stock-dot"></span>
-                余 {{ stockOf(p.id).known ? stockOf(p.id).qty : '—' }}
-              </span>
-              <button class="btn btn-sm btn-quiet pc-toggle" @click="toggle(p)"
-                      :aria-label="(p.status === 'on_sale' ? '下架 ' : '上架 ') + p.name">{{ p.status === 'on_sale' ? '下架' : '上架' }}</button>
+    <div class="catalog-layout" v-if="products.length">
+      <nav class="cat-rail" aria-label="商品大类">
+        <div class="cat-rail-title">大类</div>
+        <button v-for="g in rootGroups" :key="g.key" class="cat-rail-item"
+                :class="{ 'is-active': activeRoot === g.key }" @click="jumpToRoot(g)">
+          <span class="cr-dot"></span>
+          <span class="cr-name">{{ g.name }}</span>
+          <span class="cr-count mono">{{ g.total }}</span>
+        </button>
+      </nav>
+
+      <div class="catalog-main">
+        <nav class="cat-rail-mobile" aria-label="商品大类">
+          <button v-for="g in rootGroups" :key="g.key" class="chip chip-brand"
+                  :class="{ 'is-on': activeRoot === g.key }" @click="jumpToRoot(g)">
+            {{ g.name }}<span class="chip-count">{{ g.total }}</span>
+          </button>
+        </nav>
+
+        <section v-for="g in rootGroups" :key="g.key" :id="rootDomId(g)" class="root-section">
+          <div class="root-head">
+            <span class="root-bar"></span>
+            <span class="root-name">{{ g.name }}</span>
+            <span class="root-count mono">{{ g.total }}</span>
+          </div>
+          <div class="prod-group" v-for="mg in g.mids" :key="mg.key">
+            <div class="pg-head">
+              <span class="pg-dot"></span>
+              <span class="pg-name">{{ mg.name }}</span>
+              <span class="pg-count mono">{{ mg.items.length }}</span>
+              <span class="pg-rule"></span>
             </div>
-          </article>
-        </div>
-      </section>
+            <div class="prod-grid">
+              <article class="prod-cell" v-for="p in mg.items" :key="p.id" :class="{ 'is-off': p.status === 'off_sale' }">
+                <button class="pc-open" @click="openEdit(p)" :aria-label="'编辑商品 ' + p.name">
+                  <span class="pc-top">
+                    <span class="pc-sku mono">{{ p.sku_code }}</span>
+                    <span class="tag tag-gray" v-if="p.status === 'off_sale'">停售</span>
+                  </span>
+                  <span class="pc-name" :title="p.name">{{ p.name }}</span>
+                  <span class="pc-sub xs muted">
+                    <span class="truncate">{{ subCatOf(p) }}</span>
+                    <span class="nowrap" v-if="p.location">· {{ p.location }}</span>
+                  </span>
+                  <span class="pc-tags" v-if="(p.tags || []).length">
+                    <span v-for="t in p.tags.slice(0, 2)" :key="t" class="tag tag-brand pc-tag">#{{ t }}</span>
+                    <span v-if="p.tags.length > 2" class="pc-more muted">+{{ p.tags.length - 2 }}</span>
+                  </span>
+                </button>
+                <div class="pc-foot">
+                  <b class="pc-price mono" :title="p.cost_price !== null && p.cost_price !== undefined ? '成本 ' + money(p.cost_price) : ''">{{ money(p.list_price) }}</b>
+                  <span class="pc-stock xs" :class="'is-' + stockOf(p.id).state"
+                        :title="p.safety_stock > 0 ? '安全库存阈值 ' + p.safety_stock : ''">
+                    <span class="pc-stock-dot"></span>
+                    余 {{ stockOf(p.id).known ? stockOf(p.id).qty : '—' }}
+                  </span>
+                  <button class="btn btn-sm btn-quiet pc-toggle" @click="toggle(p)"
+                          :aria-label="(p.status === 'on_sale' ? '下架 ' : '上架 ') + p.name">{{ p.status === 'on_sale' ? '下架' : '上架' }}</button>
+                </div>
+              </article>
+            </div>
+          </div>
+        </section>
+      </div>
     </div>
     <div class="card" v-else><div class="card-body">
-      <ui-empty icon="products" title="没有符合条件的商品" text="换个分类或标签，也可以新增一个。">
+      <ui-empty icon="products" title="没有符合条件的商品" text="换个标签或搜索词，也可以新增一个。">
         <button class="btn btn-primary" @click="openNew">新增商品</button>
       </ui-empty>
     </div></div>
