@@ -32,6 +32,9 @@ iPad 上装 WorkBuddy App（App Store 搜「WorkBuddy」），用**和电脑端�
 Mac 上的 WorkBuddy 会自动：读代码 → 改代码 → 提交并推送到 GitHub → 触发自动部署。
 约 1 分钟，可在 `https://github.com/liangzj-gz/market-pos/actions` 看进度。
 
+> 若你还要更新**正式线上地址**，补一句「也发布到 WorkBuddy 正式站」，agent 会顺带触发桌面端「发布为应用」。
+> （注意：`git push` 只更新预览站，正式站必须显式发布。）
+
 > 项目根目录的 **`AGENTS.md`** 写明了完整流程（语法自检 → commit → push → 部署），
 > agent 读完就知道该怎么收尾，你也可以直接说「按 AGENTS.md 的流程走完」。
 
@@ -52,21 +55,24 @@ Actions 页面 → 找到对应 run → 右侧 **Re-run all jobs**。或用 `wor
 
 | 能做 | 不能做 |
 |---|---|
-| 用中文提需求，让 Mac 上的 WorkBuddy 改任意界面/交互/样式/文案 | Mac 离线时的任何代码改动 |
+| 用中文提需求，让 Mac 上的 WorkBuddy 改任意界面/交互/样式/文案 | Mac 离线 /「连接电脑」连不上时的任何代码改动 |
 | 调试全部 8 个页面（今日/开单/订单/库存/预警/商品/统计/设置） | 真实手机号登录 |
 | 提交、推送、看部署结果 | 云端真实数据的读写与同步 |
-| 回退任意历史版本 | 把改动发布到**正式**线上地址 |
+| 回退任意历史版本 | —— |
+| **把改动发布到正式线上地址**（前提：Mac 在线且「连接电脑」已连上；需明确说「发布到 WorkBuddy 正式站」，由 Mac 上的 WorkBuddy 触发「发布为应用」） |  |
 
-**原因**：正式上线的发布通道绑定 WorkBuddy 平台域名，只能在 Mac 桌面端触发。预览地址因为带 `?preview=1` 走的是纯本地数据（29 笔种子订单），不碰云端。
+**关于两个线上地址**（很重要）：
 
-**衔接方式**：出差期间所有改动都在 GitHub 仓库里。回 Mac 后：
+- **预览站** `https://liangzj-gz.github.io/market-pos/?preview=1`：走纯本地数据（29 笔种子订单），不碰云端。随 `git push origin main` **自动部署**（约 1 分钟），不用额外动作。
+- **正式站** `https://market-pos-90848.app.workbuddy.host/?sharecode=PUCYQVFTVK`：绑定 WorkBuddy 平台域名，发布通道只能在 **Mac 的 WorkBuddy 桌面端**触发，且**不会**随 git push 自动更新。
 
-```bash
-cd ~/WorkBuddy/集市收银台
-git pull          # 拉回 iPad 上的改动
-```
+**结论**：只要 Mac 在线、「连接电脑」连得上，你在手机上提的需求，agent 既能改代码 + 推到预览站，也能顺手「发布到正式站」——因为「连接电脑」本质就是远程操作那台 Mac 的桌面端。唯一要点：**git push 不会更新正式站**，必须明确告诉 agent「改完之后也发布到 WorkBuddy 正式站」。
 
-然后在 WorkBuddy 里点一次「发布为应用」，正式线上地址即可同步到最新。
+**推荐话术**（手机上说一句即可）：
+
+> 按 AGENTS.md 的流程走：改完代码 → 语法自检 → git push（更新预览站）→ 发布到 WorkBuddy 正式站（更新正式站）。
+
+如果某次没让 agent 发布，也没关系：回 Mac 后 `git pull` 拉回改动，再点一次「发布为应用」即可补上，两个地址就同步了。
 
 ---
 
@@ -100,5 +106,6 @@ git pull          # 拉回 iPad 上的改动
 5. 确认仓库已推送干净：`cd ~/WorkBuddy/集市收银台 && git status` 显示 `working tree clean`
 6. 确认线上正式地址已是最新版本（用 WorkBuddy 发布一次）
 
-> ✅ **推送凭据已配好**：GitHub 凭据已存入 macOS 钥匙串（`credential.helper=osxkeychain`），
-> 远程 agent 直接 `git push origin main` 即可，不会弹密码框、不会卡住。
+> ✅ **推送已配 SSH 免密**：远程仓库地址为 `git@github.com:liangzj-gz/market-pos.git`，
+> agent 直接 `git push origin main` 即可，**不依赖任何 token、不弹密码框、不会卡住**。
+> （请勿改回 https 地址；之前给的 PAT 出差回来后可删。）
