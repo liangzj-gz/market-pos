@@ -1,0 +1,5 @@
+appId: wbapp_guTvZWDoSjTuFs6rthM30K
+name: 集市收银台
+localDir: /Users/liangzj/WorkBuddy/集市收银台
+appType: web
+entryHtml: index.html
