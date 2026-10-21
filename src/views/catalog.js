@@ -4,6 +4,7 @@ import {
   rootCategories, categoryRows, tagLibrary, childrenIn, categoryProductCount
 } from '../data/store.js';
 import { money } from '../util/format.js';
+import { parseProductImport, IMPORT_SAMPLE, IMPORT_COLUMNS } from '../domain/import.js';
 import { UiSheet } from '../components/index.js';
 
 const EMPTY_PRODUCT = () => ({
@@ -36,7 +37,13 @@ export const CatalogView = {
       tagEdit: null,          // { from, name }
       newTag: '',
       confirmCatDelete: null,
-      confirmTagDelete: null
+      confirmTagDelete: null,
+      /* 批量导入 */
+      importer: false,
+      importText: '',
+      importFile: '',
+      importHelp: false,
+      autoCreateCategory: false
     };
   },
   computed: {
@@ -132,6 +139,16 @@ export const CatalogView = {
     },
     activeRootMids() {
       return this.activeRootGroup ? this.activeRootGroup.mids : [];
+    },
+    /* 批量导入：文本一变就重新解析，预览区始终和输入同步 */
+    importParsed() {
+      if (!String(this.importText || '').trim()) return null;
+      return parseProductImport(this.importText, store.db);
+    },
+    importColumns() { return IMPORT_COLUMNS; },
+    importSample() { return IMPORT_SAMPLE; },
+    importReady() {
+      return this.importParsed ? this.importParsed.okCount : 0;
     }
   },
   watch: {
@@ -270,6 +287,63 @@ export const CatalogView = {
     },
     toggle(p) { actions.toggleProduct(p.id); },
 
+    /* ---------- 批量导入 ---------- */
+    openImport() {
+      this.importer = true;
+      this.importText = '';
+      this.importFile = '';
+      this.importHelp = false;
+      this.autoCreateCategory = false;
+    },
+    closeImport() {
+      if (this.saving) return;
+      this.importer = false;
+    },
+    onImportFile(ev) {
+      const file = ev.target.files && ev.target.files[0];
+      ev.target.value = '';
+      if (!file) return;
+      if (file.size > 512 * 1024) { toast('文件太大了，请控制在 500KB 以内', 'warn'); return; }
+      const reader = new FileReader();
+      reader.onload = () => {
+        this.importText = String(reader.result || '');
+        this.importFile = file.name;
+      };
+      reader.onerror = () => toast('读取文件失败', 'warn');
+      reader.readAsText(file, 'utf-8');
+    },
+    fillImportSample() {
+      this.importText = IMPORT_SAMPLE;
+      this.importFile = '';
+    },
+    rowIssue(r) {
+      if (r.errors.length) return r.errors[0];
+      if (r.warns.length) return r.warns[0];
+      return '';
+    },
+    doImport() {
+      const parsed = this.importParsed;
+      if (!parsed) return;
+      const rows = parsed.rows.filter(r => !r.errors.length);
+      if (!rows.length) { toast('没有可导入的行，先按右侧提示改一下', 'warn'); return; }
+      this.saving = true;
+      const res = actions.importProducts(rows, { autoCreateCategory: this.autoCreateCategory });
+      this.saving = false;
+      if (!res.ok) return;
+      const okCount = res.data.ok.length;
+      const bad = res.data.bad;
+      if (bad.length) {
+        toast('导入 ' + okCount + ' 个，' + bad.length + ' 个写入失败：' + bad[0].error, 'warn');
+        return;
+      }
+      this.importer = false;
+      this.importText = '';
+      this.importFile = '';
+      toast(parsed.badCount
+        ? '已导入 ' + okCount + ' 个，另有 ' + parsed.badCount + ' 行格式有问题已跳过'
+        : '已导入 ' + okCount + ' 个商品', parsed.badCount ? 'warn' : 'ok');
+    },
+
     /* ---------- 分类管理 ---------- */
     openCatManager() {
       this.catManager = true;
@@ -394,6 +468,10 @@ export const CatalogView = {
       <button class="btn btn-icon" @click="openCatManager" aria-label="管理分类与标签" title="管理分类与标签">
         <ui-icon name="settings" :size="18" />
       </button>
+      <button v-if="tab === 'products'" class="btn btn-icon" @click="openImport"
+              aria-label="批量导入商品" title="批量导入商品">
+        <ui-icon name="boxIn" :size="18" />
+      </button>
       <button class="btn btn-primary" @click="tab === 'products' ? openNew() : openNewCombo()">
         <ui-icon name="plus" :size="17" /> {{ tab === 'products' ? '新增商品' : '新增套餐' }}
       </button>
@@ -503,8 +581,9 @@ export const CatalogView = {
       </div>
     </div>
     <div class="card" v-else><div class="card-body">
-      <ui-empty icon="products" title="没有符合条件的商品" text="换个标签或搜索词，也可以新增一个。">
+      <ui-empty icon="products" title="没有符合条件的商品" text="换个标签或搜索词，也可以新增一个；货单上的商品能一次贴进来。">
         <button class="btn btn-primary" @click="openNew">新增商品</button>
+        <button class="btn" @click="openImport">批量导入</button>
       </ui-empty>
     </div></div>
   </template>
@@ -543,8 +622,87 @@ export const CatalogView = {
     </div></div>
   </template>
 
+  <!-- 批量导入商品 -->
+  <ui-sheet v-if="importer" title="批量导入商品" @close="closeImport">
+    <div class="bi-intro">
+      从 Excel / WPS 里框选复制，整块粘到下面就行，一行一个商品。只有<b>商品名称</b>是必填的，其余列能填就填。
+    </div>
+
+    <div class="bi-toolbar">
+      <label class="btn btn-sm bi-file">
+        <ui-icon name="boxIn" :size="16" /> 选 CSV 文件
+        <input type="file" accept=".csv,.txt,text/csv,text/plain" @change="onImportFile">
+      </label>
+      <button type="button" class="btn btn-sm" @click="fillImportSample">填入示例</button>
+      <button type="button" class="btn btn-sm btn-quiet" @click="importHelp = !importHelp">
+        {{ importHelp ? '收起列说明' : '列的格式' }}
+      </button>
+    </div>
+
+    <div class="bi-help" v-if="importHelp">
+      <div class="bi-help-row" v-for="c in importColumns" :key="c.key">
+        <b>{{ c.label }}</b>
+        <span class="xs muted">{{ c.hint }}</span>
+      </div>
+      <div class="field-hint">
+        列的顺序就是上表顺序；首行如果写「名称 / 售价 / 成本价」这类表头会自动识别，不用记顺序。
+        分类用 <code>大类&gt;中类</code> 表示，标签多个用 <code>/</code> 分隔。
+      </div>
+    </div>
+
+    <div class="field">
+      <label>粘贴内容<span class="xs muted" v-if="importFile"> · {{ importFile }}</span></label>
+      <textarea class="input input-mono bi-textarea" v-model="importText" rows="7"
+                :placeholder="importSample" spellcheck="false"></textarea>
+    </div>
+
+    <div class="bi-preview" v-if="importParsed">
+      <div class="bi-stat">
+        <span class="bi-stat-ok">可导入 {{ importParsed.okCount }}</span>
+        <span class="bi-stat-bad" v-if="importParsed.badCount">{{ importParsed.badCount }} 行有错</span>
+        <span class="bi-stat-warn" v-if="importParsed.warnCount">{{ importParsed.warnCount }} 行需留意</span>
+        <span class="grow"></span>
+        <span class="xs muted">
+          {{ importParsed.separator === 'tab' ? '按制表符分列' : importParsed.separator === 'pipe' ? '按竖线分列' : importParsed.separator === 'comma' ? '按逗号分列' : '整行当名称' }}{{ importParsed.headerSkipped ? ' · 已跳过表头' : '' }}
+        </span>
+      </div>
+      <div class="bi-rows">
+        <div class="bi-row" v-for="r in importParsed.rows" :key="r.line"
+             :class="{ 'is-bad': r.errors.length, 'is-warn': !r.errors.length && r.warns.length }">
+          <span class="bi-line mono xs">{{ r.line }}</span>
+          <div class="grow">
+            <div class="bi-name">{{ r.name || '（没读到名称）' }}</div>
+            <div class="xs muted bi-sub">
+              <span v-if="r.categoryLabel">{{ r.categoryLabel }}</span>
+              <span v-if="r.list_price">{{ money(r.list_price) }}</span>
+              <span v-if="r.safety_stock">预警 {{ r.safety_stock }}</span>
+              <span v-if="r.location">货位 {{ r.location }}</span>
+              <span v-if="r.tags.length">#{{ r.tags.join(' #') }}</span>
+            </div>
+            <div class="xs bi-issue" v-if="rowIssue(r)">{{ rowIssue(r) }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <label class="bi-check" v-if="importParsed && importParsed.rows.some(r => r.categoryMiss)">
+      <input type="checkbox" v-model="autoCreateCategory">
+      <span>分类不存在的自动建出来（按「大类&gt;中类」逐级创建）</span>
+    </label>
+
+    <template #foot>
+      <button class="btn" @click="closeImport" :disabled="saving">取消</button>
+      <button class="btn btn-primary grow" @click="doImport" :disabled="saving || !importReady">
+        {{ saving ? '导入中…' : '导入 ' + importReady + ' 个' }}
+      </button>
+    </template>
+  </ui-sheet>
+
   <!-- 商品表单 -->
   <ui-sheet v-if="prodForm" :title="prodForm.id ? '编辑商品' : '新增商品'" @close="prodForm = null">
+    <div class="field-hint import-entry" v-if="!prodForm.id">
+      一次要录好几个？<button type="button" class="tag-suggest" @click="prodForm = null; openImport()">用批量导入 →</button>
+    </div>
     <div class="form-grid">
       <div class="field span-2">
         <label>商品名称 *</label>

@@ -21,6 +21,7 @@ import {
   addTag as addTagRule, renameTag as renameTagRule, deleteTag as deleteTagRule
 } from '../domain/rules.js';
 import { num, r2, int, ymd, startOfDay, addDays, daysBetween } from '../util/format.js';
+import { matchCategoryPath } from '../domain/import.js';
 import { SEED_PRODUCTS, SEED_COMBOS, SEED_ORDERS, SEED_OPENING_AT, SEED_TAGS } from './seed.js';
 import {
   cloudAvailable, loadState, saveState, getSession, phoneOf,
@@ -379,6 +380,44 @@ function act(fn, okMsg) {
   }
 }
 
+/* 批量导入时按 `大类>中类` 找到分类；不存在就逐级建出来，返回最终分类 id。
+   只在用户勾选了「自动创建分类」时才会走到这里。建不出来就返回能建到的那一层，不影响商品写入。 */
+function ensureCategoryId(db, raw) {
+  const hit = matchCategoryPath(db, raw);
+  if (hit.id) {
+    /* 大类在、中类缺：补一个中类 */
+    if (hit.miss && hit.missParent) {
+      try {
+        const c = upsertCategory(db, { name: String(hit.miss).slice(0, 12), parent_id: hit.id });
+        return c.id;
+      } catch (e) {
+        return hit.id;
+      }
+    }
+    return hit.id;
+  }
+  const parts = String(raw || '')
+    .split(/[>＞/／]/)
+    .map(s => s.trim())
+    .filter(Boolean)
+    .slice(0, 2);
+  let parentId = null;
+  for (const part of parts) {
+    const name = part.slice(0, 12);
+    const found = db.categories.find(c => (c.parent_id || null) === parentId && c.name === name);
+    if (found) {
+      parentId = found.id;
+      continue;
+    }
+    try {
+      parentId = upsertCategory(db, { name, parent_id: parentId }).id;
+    } catch (e) {
+      return parentId;
+    }
+  }
+  return parentId;
+}
+
 /* ============================================================
    选择器
    ============================================================ */
@@ -595,6 +634,49 @@ export const actions = {
   setStock(pid, counted, reason) { return act(() => setStock(store.db, pid, counted, reason)); },
   saveProduct(data)       { return act(() => upsertProduct(store.db, data)); },
   toggleProduct(id)       { return act(() => toggleProductStatus(store.db, id)); },
+  /* 批量导入商品：整批走一次 act()，只触发一次云端保存。
+     autoCreateCategory 为真时，分类没匹配上就按 `大类>中类` 逐级建出来，否则归入未分类。 */
+  importProducts(rows, opts = {}) {
+    return act(() => {
+      const db = store.db;
+      const ok = [];
+      const bad = [];
+      /* 批量导入时 upsertProduct 的默认 SKU 是 P+时间戳，同一个毫秒内会全部撞车，
+         所以这里给没填 SKU 的行按 P0001 递增分配，并记进 used 防止与后续行重复 */
+      const used = new Set(db.products.map(p => String(p.sku_code || '').toUpperCase()));
+      let seq = 1;
+      const autoSku = () => {
+        let sku;
+        do {
+          sku = 'P' + String(seq).padStart(4, '0');
+          seq += 1;
+        } while (used.has(sku));
+        used.add(sku);
+        return sku;
+      };
+      (rows || []).forEach(row => {
+        try {
+          const payload = { ...row };
+          if (!payload.category_id && opts.autoCreateCategory && row.categoryRaw) {
+            payload.category_id = ensureCategoryId(db, row.categoryRaw);
+          }
+          if (!String(payload.sku_code || '').trim()) payload.sku_code = autoSku();
+          delete payload.categoryRaw;
+          delete payload.categoryLabel;
+          delete payload.categoryMiss;
+          delete payload.errors;
+          delete payload.warns;
+          delete payload.line;
+          const saved = upsertProduct(db, payload);
+          used.add(String(saved.sku_code || '').toUpperCase());
+          ok.push(saved);
+        } catch (e) {
+          bad.push({ name: row.name || '', line: row.line, error: e && e.message ? e.message : '写入失败' });
+        }
+      });
+      return { ok, bad };
+    });
+  },
   saveCombo(data)         { return act(() => upsertCombo(store.db, data)); },
   deleteCombo(id)         { return act(() => deleteCombo(store.db, id)); },
   resolveAlert(id, note)  { return act(() => resolveAlert(store.db, id, note)); },

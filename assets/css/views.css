@@ -1155,3 +1155,78 @@
   padding: 9px 12px; margin-bottom: 12px;
 }
 .login-foot { margin: 14px 2px 0; line-height: 1.6; text-align: center; }
+
+/* ============ 商品批量导入 ============ */
+/* 输入区用等宽字体：粘贴进来的表格靠 tab 对齐，等宽才看得出列有没有错位 */
+.bi-intro {
+  font-size: var(--fs-sm); line-height: 1.6; color: var(--label-2);
+  margin-bottom: 14px;
+}
+.bi-intro b { color: var(--label); font-weight: 600; }
+
+.bi-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.bi-file { position: relative; overflow: hidden; cursor: pointer; }
+.bi-file input[type="file"] {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  opacity: 0; cursor: pointer;
+}
+
+.bi-help {
+  background: var(--fill); border: 1px solid var(--stroke);
+  border-radius: var(--r-sm); padding: 11px 13px; margin-bottom: 14px;
+}
+.bi-help-row {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 3px 0; font-size: var(--fs-sm);
+}
+.bi-help-row b { flex: none; min-width: 62px; font-weight: 600; color: var(--label); }
+.bi-help code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: .92em; background: var(--fill-2);
+  border-radius: 4px; padding: 1px 4px;
+}
+.bi-help .field-hint { margin-top: 9px; line-height: 1.55; }
+
+.bi-textarea {
+  min-height: 130px; line-height: 1.7; resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--fs-sm); tab-size: 10;
+  white-space: pre; overflow-x: auto;
+}
+
+.bi-preview { margin-top: 16px; }
+.bi-stat {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding-bottom: 8px; border-bottom: 1px solid var(--stroke);
+  font-size: var(--fs-sm);
+}
+.bi-stat-ok   { color: var(--green); font-weight: 600; }
+.bi-stat-bad  { color: var(--red);   font-weight: 600; }
+.bi-stat-warn { color: var(--amber); font-weight: 600; }
+
+/* 预览区不单独滚动：sheet-body 已经在滚，再套一层手机上很难滑 */
+.bi-rows { margin-top: 4px; }
+.bi-row {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 9px 2px; border-bottom: 1px solid var(--stroke);
+}
+.bi-row:last-child { border-bottom: none; }
+.bi-line {
+  flex: none; min-width: 20px; padding-top: 1px;
+  text-align: right; color: var(--label-4);
+}
+.bi-name { font-size: var(--fs-sm); font-weight: 600; line-height: 1.4; }
+.bi-sub { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
+.bi-issue { margin-top: 3px; line-height: 1.45; }
+.bi-row.is-bad .bi-name,
+.bi-row.is-bad .bi-issue { color: var(--red); }
+.bi-row.is-warn .bi-issue { color: var(--amber); }
+
+.bi-check {
+  display: flex; align-items: flex-start; gap: 8px;
+  margin-top: 14px; font-size: var(--fs-sm); line-height: 1.5;
+  color: var(--label-2); cursor: pointer;
+}
+.bi-check input { flex: none; margin-top: 3px; accent-color: var(--blue); }
+
+.import-entry { margin-bottom: 12px; }
