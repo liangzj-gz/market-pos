@@ -26,10 +26,12 @@
      cp "$f" /tmp/_chk.mjs && node --check /tmp/_chk.mjs || echo "语法错误: $f"
    done
    ```
-2. **提交并推送**（凭据已存入 macOS 钥匙串，可直接推，不会要密码）：
+2. **提交并推送**（远程已配置为 SSH 免密，直接推，不会要密码、不会弹任何提示）：
    ```bash
    git add -A && git commit -m "简要描述本次改动" && git push origin main
    ```
+   remote 为 `git@github.com:liangzj-gz/market-pos.git`，SSH 密钥已注册在账号 `liangzj-gz` 下，
+   推送**不依赖任何 token**，请勿改回 https 地址。
 3. **告知用户预览地址**：push 后约 1 分钟自动部署完成，用户刷新
    `https://liangzj-gz.github.io/market-pos/?preview=1` 即可看到效果
    （若看到旧版本，让用户在网址后加 `&v=2` 之类参数强制刷新缓存）
