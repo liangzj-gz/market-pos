@@ -17,6 +17,7 @@
 
 ## 二、完整闭环（3 步，全程不用碰代码）
 
+> ✅ **已实测通过**（2026-10-21 手机端实测：App 顶栏显示「liangzj的MacBook Air」，消息正常送达并在 Mac 上执行）
 > 前提：**Mac 在线**。所有改码动作由 Mac 上的 WorkBuddy 执行，你只需要用中文把需求说出来。
 
 ### 1. 说需求
@@ -30,6 +31,9 @@ iPad 上装 WorkBuddy App（App Store 搜「WorkBuddy」），用**和电脑端�
 
 Mac 上的 WorkBuddy 会自动：读代码 → 改代码 → 提交并推送到 GitHub → 触发自动部署。
 约 1 分钟，可在 `https://github.com/liangzj-gz/market-pos/actions` 看进度。
+
+> 项目根目录的 **`AGENTS.md`** 写明了完整流程（语法自检 → commit → push → 部署），
+> agent 读完就知道该怎么收尾，你也可以直接说「按 AGENTS.md 的流程走完」。
 
 ### 3. 看效果
 
@@ -95,3 +99,6 @@ git pull          # 拉回 iPad 上的改动
    ```
 5. 确认仓库已推送干净：`cd ~/WorkBuddy/集市收银台 && git status` 显示 `working tree clean`
 6. 确认线上正式地址已是最新版本（用 WorkBuddy 发布一次）
+
+> ✅ **推送凭据已配好**：GitHub 凭据已存入 macOS 钥匙串（`credential.helper=osxkeychain`），
+> 远程 agent 直接 `git push origin main` 即可，不会弹密码框、不会卡住。
