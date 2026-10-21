@@ -32,7 +32,7 @@ function ensureXlsx() {
   return xlsxPromise;
 }
 
-const SHEET_FIELDS = ['name', 'list_price', 'cost_price', 'safety_stock', 'location', 'sku_code', 'category', 'tags'];
+const SHEET_FIELDS = ['name', 'list_price', 'cost_price', 'safety_stock', 'location', 'sku_code', 'cat1', 'cat2', 'tags'];
 
 export const CatalogView = {
   name: 'CatalogView',
@@ -179,9 +179,12 @@ export const CatalogView = {
     },
     sheetText() {
       return this.sheetFilledRows.map(row =>
-        IMPORT_COLUMNS.map(col => String(row[col.key] === null || row[col.key] === undefined ? '' : row[col.key])
-          .replace(/\t/g, ' ')
-          .replace(/\r?\n/g, ' ')).join('\t')
+        IMPORT_COLUMNS.map(col => {
+          const value = col.key === 'category' ? this.categoryText(row) : row[col.key];
+          return String(value === null || value === undefined ? '' : value)
+            .replace(/\t/g, ' ')
+            .replace(/\r?\n/g, ' ');
+        }).join('\t')
       ).join('\n');
     },
     sheetParsed() {
@@ -372,7 +375,7 @@ export const CatalogView = {
       return {
         key: ++this.sheetSeq,
         name: '', list_price: '', cost_price: '', safety_stock: '',
-        location: '', sku_code: '', category: '', tags: '',
+        location: '', sku_code: '', cat1: '', cat2: '', tags: '',
         ...data
       };
     },
@@ -387,19 +390,26 @@ export const CatalogView = {
       this.sheetRows = Array.from({ length: 5 }, () => this.newSheetRow());
     },
     fillSheetSample() {
-      const categories = this.categoryPaths;
-      const category = categories.find(p => !p.startsWith('其他')) || categories[0] || '';
+      const root = this.rootCats.find(c => c.name !== '其他') || this.rootCats[0];
+      const mid = root ? childrenIn(root.id)[0] : null;
       this.sheetSeq = 0;
       this.sheetRows = [
         this.newSheetRow({
           name: '示例-手工皂', list_price: '18', cost_price: '6', safety_stock: '5',
-          location: 'A-1', category, tags: '手工/送礼'
+          location: 'A-1', cat1: root ? root.id : '', cat2: mid ? mid.id : '', tags: '手工/送礼'
         }),
         this.newSheetRow({
           name: '示例-帆布包', list_price: '39', cost_price: '12', safety_stock: '3',
-          location: 'B-2', category, tags: '热销'
+          location: 'B-2', cat1: root ? root.id : '', cat2: mid ? mid.id : '', tags: '热销'
         })
       ];
+    },
+    midOptions(row) { return row.cat1 ? childrenIn(row.cat1) : []; },
+    categoryText(row) {
+      const root = store.db.categories.find(c => c.id === row.cat1);
+      if (!root) return '';
+      const mid = store.db.categories.find(c => c.id === row.cat2);
+      return mid ? root.name + '>' + mid.name : root.name;
     },
     sheetRowParsed(row) { return this.sheetParsedByKey[row.key] || null; },
     sheetRowIssue(row) {
@@ -866,7 +876,7 @@ export const CatalogView = {
 
     <template v-else>
       <div class="bi-intro">
-        像表格一样逐行填写，一行一个商品。商品名称必填；分类写「大类&gt;中类」，不存在的分类可在下方勾选自动创建。
+        像表格一样逐行填写，一行一个商品。商品名称必填；分类直接选大类和中类（新分类先去「管理分类」添加）。
       </div>
 
       <div class="bi-sheet-toolbar">
@@ -889,7 +899,8 @@ export const CatalogView = {
               <th class="bi-col-stock">安全库存</th>
               <th class="bi-col-location">货位</th>
               <th class="bi-col-sku">SKU</th>
-              <th class="bi-col-category">分类</th>
+              <th class="bi-col-cat-root">大类</th>
+              <th class="bi-col-cat-mid">中类</th>
               <th class="bi-col-tags">标签</th>
               <th class="bi-col-act"></th>
             </tr>
@@ -904,7 +915,18 @@ export const CatalogView = {
                 <td><input class="input bi-cell" type="number" inputmode="numeric" min="0" v-model="row.safety_stock" placeholder="0" aria-label="安全库存"></td>
                 <td><input class="input bi-cell" v-model="row.location" placeholder="如 A-1" aria-label="货位"></td>
                 <td><input class="input bi-cell" v-model="row.sku_code" placeholder="留空自动生成" aria-label="SKU"></td>
-                <td><input class="input bi-cell" v-model="row.category" list="import-categories" placeholder="大类>中类" aria-label="分类"></td>
+                <td>
+                  <select class="select bi-cell" v-model="row.cat1" @change="row.cat2 = ''" aria-label="大类">
+                    <option value="">未分类</option>
+                    <option v-for="c in rootCats" :key="c.id" :value="c.id">{{ c.name }}</option>
+                  </select>
+                </td>
+                <td>
+                  <select class="select bi-cell" v-model="row.cat2" :disabled="!row.cat1" aria-label="中类">
+                    <option value="">不选中类</option>
+                    <option v-for="c in midOptions(row)" :key="c.id" :value="c.id">{{ c.name }}</option>
+                  </select>
+                </td>
                 <td><input class="input bi-cell" v-model="row.tags" placeholder="热销/新品" aria-label="标签"></td>
                 <td class="bi-col-act">
                   <button class="btn btn-sm btn-quiet" @click="removeSheetRow(row)" aria-label="删除这一行">
@@ -914,16 +936,13 @@ export const CatalogView = {
               </tr>
               <tr v-if="sheetRowIssue(row)" class="bi-sheet-issue" :class="{ 'is-warn': sheetRowWarn(row) }">
                 <td></td>
-                <td :colspan="9" class="bi-issue">{{ sheetRowIssue(row) }}</td>
+                <td :colspan="10" class="bi-issue">{{ sheetRowIssue(row) }}</td>
               </tr>
             </template>
           </tbody>
         </table>
       </div>
       <button class="btn btn-sm bi-add-row" @click="addSheetRow"><ui-icon name="plus" :size="14" /> 再加一行</button>
-      <datalist id="import-categories">
-        <option v-for="p in categoryPaths" :key="p" :value="p"></option>
-      </datalist>
 
       <div class="bi-stat bi-sheet-stat" v-if="sheetParsed">
         <span class="bi-stat-ok">可导入 {{ sheetParsed.okCount }}</span>

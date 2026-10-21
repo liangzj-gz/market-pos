@@ -1259,13 +1259,15 @@
   min-height: 32px; height: 32px; padding: 4px 7px;
   font-size: 14px; border-radius: 8px;
 }
-.bi-col-name { width: 180px; }
-.bi-col-price { width: 82px; }
-.bi-col-stock { width: 92px; }
-.bi-col-location { width: 90px; }
-.bi-col-sku { width: 120px; }
-.bi-col-category { width: 150px; }
-.bi-col-tags { width: 130px; }
+.bi-sheet select.bi-cell { padding-right: 24px; }
+.bi-col-name { width: 170px; }
+.bi-col-price { width: 78px; }
+.bi-col-stock { width: 88px; }
+.bi-col-location { width: 84px; }
+.bi-col-sku { width: 110px; }
+.bi-col-cat-root { width: 110px; }
+.bi-col-cat-mid { width: 120px; }
+.bi-col-tags { width: 110px; }
 .bi-col-act { width: 40px; text-align: center; }
 .bi-sheet-no { width: 30px; text-align: right !important; color: var(--label-4); }
 .bi-sheet td.bi-sheet-no { padding: 12px 4px 0 0 !important; }
