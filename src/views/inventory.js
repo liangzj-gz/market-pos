@@ -37,7 +37,6 @@ export const InventoryView = {
         if (!kw) return true;
         return r.p.name.toLowerCase().includes(kw)
           || (r.p.series || '').toLowerCase().includes(kw)
-          || (r.p.location || '').toLowerCase().includes(kw)
           || (r.p.sku_code || '').toLowerCase().includes(kw);
       });
     },
@@ -102,7 +101,7 @@ export const InventoryView = {
     <div class="card-body">
       <div class="input-search">
         <ui-icon name="search" :size="17" />
-        <input class="input" v-model="search" type="search" placeholder="搜商品 / 系列 / 货位 / SKU" aria-label="搜索库存">
+        <input class="input" v-model="search" type="search" placeholder="搜商品 / 系列 / SKU" aria-label="搜索库存">
       </div>
       <div class="chips-scroll" style="margin-top:10px">
         <button v-for="f in filters" :key="f.key" class="chip"
@@ -122,7 +121,7 @@ export const InventoryView = {
             <span class="tag tag-gray" v-if="r.p.status === 'off_sale'">停售</span>
           </div>
           <div class="inv-meta xs muted">
-            {{ r.p.series }} · {{ r.p.location || '未设货位' }} · {{ r.p.sku_code }}
+            {{ r.p.series }} · {{ r.p.sku_code }}
             <template v-if="r.known && r.threshold > 0"> · 阈值 {{ r.threshold }}</template>
           </div>
         </div>

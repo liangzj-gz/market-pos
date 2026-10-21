@@ -12,7 +12,7 @@
  */
 
 /* 无表头时的默认列顺序，只写名称也能导入 */
-const DEFAULT_ORDER = ['name', 'list_price', 'cost_price', 'safety_stock', 'location', 'sku_code', 'category', 'tags'];
+const DEFAULT_ORDER = ['name', 'list_price', 'cost_price', 'safety_stock', 'sku_code', 'category', 'tags'];
 
 /* 表头关键词 → 字段。都是小写比较，中文不区分大小写 */
 const HEADER_KEYWORDS = {
@@ -20,7 +20,6 @@ const HEADER_KEYWORDS = {
   list_price: ['售价', '价格', '单价', '零售价', '卖价', 'price'],
   cost_price: ['成本', '成本价', '进价', '采购价', 'cost'],
   safety_stock: ['安全库存', '预警', '预警值', '库存阈值', '阈值', 'safety'],
-  location: ['货位', '位置', '库位', '存放位置', 'location'],
   sku_code: ['sku', '编码', '商品编码', '货号', '条码', 'code'],
   category: ['分类', '类别', '品类', 'category'],
   tags: ['标签', 'tag', 'tags']
@@ -141,7 +140,7 @@ function parseTags(raw) {
 
 /* 主入口：解析整段文本
  * 返回 { rows, okCount, badCount, warnCount, separator, headerSkipped }
- * 每行结构：{ line, name, list_price, cost_price, safety_stock, location, sku_code,
+ * 每行结构：{ line, name, list_price, cost_price, safety_stock, sku_code,
  *            category_id, categoryLabel, categoryRaw, tags, errors:[], warns:[] } */
 export function parseProductImport(text, db) {
   const rawLines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
@@ -183,7 +182,6 @@ export function parseProductImport(text, db) {
     const priceRaw = pick('list_price');
     const costRaw = pick('cost_price');
     const safetyRaw = pick('safety_stock');
-    const location = String(pick('location') || '').trim();
     const skuRaw = String(pick('sku_code') || '').trim();
     const categoryRaw = String(pick('category') || '').trim();
     const tagsRaw = String(pick('tags') || '').trim();
@@ -228,7 +226,6 @@ export function parseProductImport(text, db) {
       list_price: list_price === null ? 0 : list_price,
       cost_price: cost_price === null ? '' : cost_price,
       safety_stock,
-      location,
       sku_code,
       cat1: cat.id || '',
       cat2: '',
@@ -268,8 +265,8 @@ export function matrixToTsv(matrix) {
 
 /* 界面里展示解析预览时的示例文本，和解析规则保持一致 */
 export const IMPORT_SAMPLE = [
-  '手工皂\t18\t6\t5\tA-1\tSOAP01\t洗护>皂类\t手工/送礼',
-  '帆布包\t39\t12\t3\tB-2\t\t布艺\t热销'
+  '手工皂\t18\t6\t5\tSOAP01\t洗护>皂类\t手工/送礼',
+  '帆布包\t39\t12\t3\t\t布艺\t热销'
 ].join('\n');
 
 export const IMPORT_COLUMNS = [
@@ -277,7 +274,6 @@ export const IMPORT_COLUMNS = [
   { key: 'list_price', label: '售价', hint: '数字，可带 ¥' },
   { key: 'cost_price', label: '成本价', hint: '选填，算毛利用' },
   { key: 'safety_stock', label: '安全库存', hint: '整数，0 表示不预警' },
-  { key: 'location', label: '货位', hint: '如 A-1' },
   { key: 'sku_code', label: 'SKU', hint: '留空自动生成' },
   { key: 'category', label: '分类', hint: '大类>中类' },
   { key: 'tags', label: '标签', hint: '多个用 / 分隔' }

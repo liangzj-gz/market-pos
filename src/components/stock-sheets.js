@@ -68,7 +68,7 @@ export const UiStockInSheet = {
         <div class="sheet-product">
           <div class="grow">
             <div class="strong">{{ single.name }}</div>
-            <div class="xs muted">{{ single.series }} · {{ single.location || '未设货位' }} · 现余
+            <div class="xs muted">{{ single.series }} · 现余
               {{ stockOf(single.id).known ? stockOf(single.id).qty : '未盘点' }}
             </div>
           </div>
@@ -169,7 +169,7 @@ export const UiStockTakeSheet = {
       <div class="sheet-product">
         <div class="grow">
           <div class="strong">{{ product ? product.name : '' }}</div>
-          <div class="xs muted">{{ product ? product.series : '' }} · {{ product && product.location ? product.location : '未设货位' }}</div>
+          <div class="xs muted">{{ product ? product.series : '' }}</div>
         </div>
         <div class="take-system">
           <span class="xs muted">账面</span>

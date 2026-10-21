@@ -9,7 +9,7 @@ import { UiSheet } from '../components/index.js';
 
 const EMPTY_PRODUCT = () => ({
   id: null, sku_code: '', name: '', cat1: '', cat2: '',
-  list_price: '', cost_price: '', safety_stock: 0, location: '', barcode: '',
+  list_price: '', cost_price: '', safety_stock: 0, barcode: '',
   status: 'on_sale', tags: [], tagInput: ''
 });
 
@@ -32,7 +32,7 @@ function ensureXlsx() {
   return xlsxPromise;
 }
 
-const SHEET_FIELDS = ['name', 'list_price', 'cost_price', 'safety_stock', 'location', 'sku_code', 'cat1', 'cat2', 'tags'];
+const SHEET_FIELDS = ['name', 'list_price', 'cost_price', 'safety_stock', 'sku_code', 'cat1', 'cat2', 'tags'];
 
 export const CatalogView = {
   name: 'CatalogView',
@@ -83,7 +83,7 @@ export const CatalogView = {
         if (this.tag !== 'all' && !(p.tags || []).includes(this.tag)) return false;
         if (!kw) return true;
         const hay = [
-          p.name, p.sku_code, p.location,
+          p.name, p.sku_code,
           this.catPathText(p),
           (p.tags || []).join(' ')
         ].filter(Boolean).join(' ').toLowerCase();
@@ -328,7 +328,7 @@ export const CatalogView = {
         cat2: path[1] ? path[1].id : '',
         list_price: p.list_price,
         cost_price: p.cost_price === null || p.cost_price === undefined ? '' : p.cost_price,
-        safety_stock: p.safety_stock, location: p.location || '', barcode: p.barcode || '',
+        safety_stock: p.safety_stock, barcode: p.barcode || '',
         status: p.status, tags: [...(p.tags || [])], tagInput: ''
       };
     },
@@ -375,7 +375,7 @@ export const CatalogView = {
       return {
         key: ++this.sheetSeq,
         name: '', list_price: '', cost_price: '', safety_stock: '',
-        location: '', sku_code: '', cat1: '', cat2: '', tags: '',
+        sku_code: '', cat1: '', cat2: '', tags: '',
         ...data
       };
     },
@@ -396,11 +396,11 @@ export const CatalogView = {
       this.sheetRows = [
         this.newSheetRow({
           name: '示例-手工皂', list_price: '18', cost_price: '6', safety_stock: '5',
-          location: 'A-1', cat1: root ? root.id : '', cat2: mid ? mid.id : '', tags: '手工/送礼'
+          cat1: root ? root.id : '', cat2: mid ? mid.id : '', tags: '手工/送礼'
         }),
         this.newSheetRow({
           name: '示例-帆布包', list_price: '39', cost_price: '12', safety_stock: '3',
-          location: 'B-2', cat1: root ? root.id : '', cat2: mid ? mid.id : '', tags: '热销'
+          cat1: root ? root.id : '', cat2: mid ? mid.id : '', tags: '热销'
         })
       ];
     },
@@ -469,10 +469,10 @@ export const CatalogView = {
         const XLSX = await ensureXlsx();
         const headers = IMPORT_COLUMNS.map(c => c.label);
         const categories = this.categoryPaths;
-        const sampleCategory = categories.find(p => !p.startsWith('其他')) || categories[0] || '';
+        const sampleCategory = categories.find(p => p.includes('>') && !p.startsWith('其他')) || categories[0] || '';
         const sheet = XLSX.utils.aoa_to_sheet([
           headers,
-          ['示例-手工皂', '18', '6', '5', 'A-1', '', sampleCategory, '手工/送礼']
+          ['示例-手工皂', '18', '6', '5', '', sampleCategory, '手工/送礼']
         ]);
         sheet['!cols'] = headers.map((h, i) => ({ wch: [18, 10, 10, 12, 10, 14, 20, 18][i] || 12 }));
         const helpRows = [['列名', '说明']].concat(IMPORT_COLUMNS.map(c => [c.label, c.hint]));
@@ -661,7 +661,7 @@ export const CatalogView = {
       <div class="catalog-filter-row">
         <div class="input-search catalog-search">
           <ui-icon name="search" :size="17" />
-          <input class="input" v-model="search" type="search" placeholder="搜名称 / SKU / 分类 / 标签 / 货位" aria-label="搜索商品">
+          <input class="input" v-model="search" type="search" placeholder="搜名称 / SKU / 分类 / 标签" aria-label="搜索商品">
         </div>
         <div class="chips-scroll catalog-tags" v-if="tags.length">
           <button class="chip" :class="{ 'is-on': tag === 'all' }" :aria-pressed="tag === 'all'" @click="tag = 'all'">全部标签</button>
@@ -735,7 +735,6 @@ export const CatalogView = {
                   <span class="pc-name" :title="p.name">{{ p.name }}</span>
                   <span class="pc-sub xs muted">
                     <span class="truncate">{{ subCatOf(p) }}</span>
-                    <span class="nowrap" v-if="p.location">· {{ p.location }}</span>
                   </span>
                   <span class="pc-tags" v-if="(p.tags || []).length">
                     <span v-for="t in p.tags.slice(0, 2)" :key="t" class="tag tag-brand pc-tag">#{{ t }}</span>
@@ -864,7 +863,6 @@ export const CatalogView = {
                 <span v-if="r.categoryLabel">{{ r.categoryLabel }}</span>
                 <span v-if="r.list_price">{{ money(r.list_price) }}</span>
                 <span v-if="r.safety_stock">预警 {{ r.safety_stock }}</span>
-                <span v-if="r.location">货位 {{ r.location }}</span>
                 <span v-if="r.tags.length">#{{ r.tags.join(' #') }}</span>
               </div>
               <div class="xs bi-issue" v-if="rowIssue(r)">{{ rowIssue(r) }}</div>
@@ -897,7 +895,6 @@ export const CatalogView = {
               <th class="bi-col-price">售价</th>
               <th class="bi-col-price">成本价</th>
               <th class="bi-col-stock">安全库存</th>
-              <th class="bi-col-location">货位</th>
               <th class="bi-col-sku">SKU</th>
               <th class="bi-col-cat-root">大类</th>
               <th class="bi-col-cat-mid">中类</th>
@@ -913,7 +910,6 @@ export const CatalogView = {
                 <td><input class="input bi-cell" type="number" inputmode="decimal" step="0.01" v-model="row.list_price" placeholder="0" aria-label="售价"></td>
                 <td><input class="input bi-cell" type="number" inputmode="decimal" step="0.01" v-model="row.cost_price" placeholder="选填" aria-label="成本价"></td>
                 <td><input class="input bi-cell" type="number" inputmode="numeric" min="0" v-model="row.safety_stock" placeholder="0" aria-label="安全库存"></td>
-                <td><input class="input bi-cell" v-model="row.location" placeholder="如 A-1" aria-label="货位"></td>
                 <td><input class="input bi-cell" v-model="row.sku_code" placeholder="留空自动生成" aria-label="SKU"></td>
                 <td>
                   <select class="select bi-cell" v-model="row.cat1" @change="row.cat2 = ''" aria-label="大类">
@@ -936,7 +932,7 @@ export const CatalogView = {
               </tr>
               <tr v-if="sheetRowIssue(row)" class="bi-sheet-issue" :class="{ 'is-warn': sheetRowWarn(row) }">
                 <td></td>
-                <td :colspan="10" class="bi-issue">{{ sheetRowIssue(row) }}</td>
+                <td :colspan="9" class="bi-issue">{{ sheetRowIssue(row) }}</td>
               </tr>
             </template>
           </tbody>
@@ -1020,10 +1016,6 @@ export const CatalogView = {
         <label>安全库存阈值</label>
         <input class="input input-mono" type="number" inputmode="numeric" min="0" v-model="prodForm.safety_stock">
         <div class="field-hint">低于或等于这个数就触发预警，填 0 表示不预警</div>
-      </div>
-      <div class="field">
-        <label>货位</label>
-        <input class="input" v-model="prodForm.location" placeholder="如 A-1 / 9-4">
       </div>
       <div class="field">
         <label>SKU 编码</label>

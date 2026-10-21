@@ -39,7 +39,6 @@ export const RegisterView = {
         return p.name.toLowerCase().includes(kw)
           || (p.series || '').toLowerCase().includes(kw)
           || (p.category || '').toLowerCase().includes(kw)
-          || (p.location || '').toLowerCase().includes(kw)
           || (p.sku_code || '').toLowerCase().includes(kw)
           || (p.tags || []).join(' ').toLowerCase().includes(kw);
       });
@@ -156,7 +155,7 @@ export const RegisterView = {
         <div class="input-search">
           <ui-icon name="search" :size="17" />
           <input class="input" v-model="reg.search" type="search" enterkeyhint="search"
-                 placeholder="搜名称 / 系列 / 货位 / SKU" aria-label="搜索商品">
+                 placeholder="搜名称 / 系列 / SKU" aria-label="搜索商品">
           <button v-if="reg.search" class="pick-clear" @click="clearSearch" aria-label="清空搜索">
             <ui-icon name="close" :size="15" />
           </button>
@@ -206,7 +205,7 @@ export const RegisterView = {
             <span class="pick-name">{{ p.name }}</span>
             <span class="pick-price mono">{{ money(p.list_price) }}</span>
             <span class="pick-stock" :class="{ low: stockLeft(p).low }">
-              {{ stockLeft(p).text }}<template v-if="p.location"> · {{ p.location }}</template>
+              {{ stockLeft(p).text }}
             </span>
           </button>
         </div>
@@ -258,7 +257,7 @@ export const RegisterView = {
           </div>
 
           <div class="field" style="margin:12px 0 0">
-            <input class="input" v-model="note" placeholder="备注（选填）：客人要求、货位、口头约定…" aria-label="订单备注">
+            <input class="input" v-model="note" placeholder="备注（选填）：客人要求、口头约定、取货时间…" aria-label="订单备注">
           </div>
         </div>
 

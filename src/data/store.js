@@ -46,10 +46,11 @@ export function buildSeedDb() {
   const db = createDb();
 
   const idByName = {};
-  SEED_PRODUCTS.forEach(([name, series, category, list_price, cost_price, opening, safety_stock, location, sku_code]) => {
+  /* 第 8 列原为货位，现已废弃，跳过不写入商品 */
+  SEED_PRODUCTS.forEach(([name, series, category, list_price, cost_price, opening, safety_stock, , sku_code]) => {
     const p = {
       id: db.seq.product++, sku_code, name, series, category, unit: '件',
-      list_price, cost_price, safety_stock, location, barcode: null,
+      list_price, cost_price, safety_stock, barcode: null,
       status: 'on_sale', created_at: SEED_OPENING_AT,
       tags: SEED_TAGS[name] ? [...SEED_TAGS[name]] : []
     };
@@ -128,7 +129,10 @@ function migrate(db) {
   if (!db.tags) db.tags = [];
   if (!db.seq) db.seq = {};
   if (!db.balances || typeof db.balances !== 'object') db.balances = {};
-  db.products.forEach(p => { if (!Array.isArray(p.tags)) p.tags = []; });
+  db.products.forEach(p => {
+    if (!Array.isArray(p.tags)) p.tags = [];
+    delete p.location;
+  });
   buildCategoryTree(db);
   collapseCategoryDepth(db);
   db.tags = Array.from(new Set([...db.tags, ...db.products.flatMap(p => p.tags || [])]));

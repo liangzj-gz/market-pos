@@ -619,7 +619,6 @@ export function upsertProduct(db, data) {
     list_price: r2(num(data.list_price)),
     cost_price: data.cost_price === '' || data.cost_price === null || data.cost_price === undefined ? null : r2(num(data.cost_price)),
     safety_stock: Math.max(0, int(data.safety_stock)),
-    location: String(data.location || '').trim() || null,
     barcode: String(data.barcode || '').trim() || null,
     status: data.status === 'off_sale' ? 'off_sale' : 'on_sale'
   };

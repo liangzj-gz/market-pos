@@ -83,9 +83,7 @@ export const AlertsView = {
             <span class="tag" :class="a.quantity < 0 ? 'tag-danger' : 'tag-warn'">{{ kindTxt(a) }}</span>
           </div>
           <div class="xs muted">
-            {{ a.product ? a.product.series : '' }}
-            <template v-if="a.product && a.product.location"> · {{ a.product.location }}</template>
-            · {{ fmtAgo(a.created_at) }}
+            {{ a.product ? a.product.series : '' }} · {{ fmtAgo(a.created_at) }}
           </div>
         </div>
         <div class="ac-qty">
