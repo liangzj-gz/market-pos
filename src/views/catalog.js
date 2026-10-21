@@ -358,14 +358,17 @@ export const CatalogView = {
     /* ---------- 批量导入 ---------- */
     openImport() {
       this.importer = true;
-      this.importMode = 'file';
+      this.importMode = 'table';
       this.importText = '';
       this.importFile = '';
       this.importHelp = false;
       this.autoCreateCategory = false;
       this.excelLoading = false;
       this.resetSheetRows();
-      ensureXlsx().catch(() => {});
+    },
+    setImportMode(mode) {
+      this.importMode = mode;
+      if (mode === 'file') ensureXlsx().catch(() => {});
     },
     closeImport() {
       if (this.saving) return;
@@ -802,10 +805,10 @@ export const CatalogView = {
   <!-- 批量导入商品 -->
   <ui-sheet v-if="importer" title="批量导入商品" xwide @close="closeImport">
     <div class="seg bi-modes" role="tablist">
-      <button class="seg-btn" :class="{ 'is-on': importMode === 'file' }" role="tab"
-              :aria-selected="importMode === 'file'" @click="importMode = 'file'">Excel 文件导入</button>
       <button class="seg-btn" :class="{ 'is-on': importMode === 'table' }" role="tab"
-              :aria-selected="importMode === 'table'" @click="importMode = 'table'">在线表格录入</button>
+              :aria-selected="importMode === 'table'" @click="setImportMode('table')">在线表格录入</button>
+      <button class="seg-btn" :class="{ 'is-on': importMode === 'file' }" role="tab"
+              :aria-selected="importMode === 'file'" @click="setImportMode('file')">Excel 文件导入</button>
     </div>
 
     <template v-if="importMode === 'file'">
