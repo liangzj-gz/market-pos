@@ -478,9 +478,39 @@
 .catalog-head { margin-bottom: 12px; }
 .catalog-seg { margin-bottom: 0; }
 
+@media (min-width: 900px) {
+  .catalog-sticky {
+    position: sticky; top: 0; z-index: 25;
+    margin: -30px -34px 12px;
+    padding: 30px 34px 0;
+    border-bottom: 1px solid transparent;
+    transition: padding var(--dur) var(--ease), border-color var(--dur) var(--ease),
+                background var(--dur) var(--ease);
+  }
+  .catalog-sticky.is-condensed {
+    padding-top: 10px; padding-bottom: 8px;
+    background: var(--glass-chrome);
+    -webkit-backdrop-filter: var(--blur-chrome);
+    backdrop-filter: var(--blur-chrome);
+    border-bottom-color: var(--stroke);
+    box-shadow: var(--sh-1);
+  }
+  .catalog-sticky .catalog-filter-card { margin-bottom: 0; }
+  .catalog-sticky.is-condensed .catalog-head { margin-bottom: 8px; }
+  .catalog-sticky.is-condensed .catalog-tags { display: none; }
+  .catalog-sticky.is-condensed .catalog-filter-card { width: 190px; }
+  .catalog-sticky.is-condensed .catalog-filter-card .card-body { padding: 6px 10px; }
+  .catalog-sticky.is-condensed .catalog-search {
+    flex-basis: 150px; min-width: 150px;
+  }
+  .catalog-sticky.is-condensed .catalog-search .input {
+    min-height: 32px; padding-top: 3px; padding-bottom: 3px;
+  }
+}
+
 .catalog-filter-card .card-body { padding: 8px 10px; }
 .catalog-filter-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.catalog-search { flex: 0 1 300px; min-width: 210px; }
+.catalog-search { flex: 0 1 300px; min-width: 210px; transition: flex-basis var(--dur) var(--ease); }
 .catalog-search .input { min-height: 36px; padding: 6px 12px 6px 36px; }
 .catalog-search > svg { left: 11px; }
 .catalog-tags { flex: 1; min-width: 0; }
@@ -620,7 +650,8 @@
   }
 }
 @media (min-width: 900px) {
-  .root-section, .root-section .prod-group { scroll-margin-top: 24px; }
+  .cat-rail { top: 120px; max-height: calc(100vh - 144px); }
+  .root-section, .root-section .prod-group { scroll-margin-top: 130px; }
 }
 
 @media (max-width: 520px) {

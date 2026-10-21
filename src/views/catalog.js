@@ -22,6 +22,7 @@ export const CatalogView = {
       tag: 'all',
       activeRoot: null,
       activeMid: null,
+      condensed: false,
       prodForm: null,
       comboTarget: null,
       confirmDelete: null,
@@ -142,11 +143,15 @@ export const CatalogView = {
       if (this._scrollRaf) return;
       this._scrollRaf = requestAnimationFrame(() => {
         this._scrollRaf = null;
+        this.updateCondensed();
         this.updateActiveRoot();
       });
     };
     window.addEventListener('scroll', this._onScroll, { passive: true });
-    this.$nextTick(this.updateActiveRoot);
+    this.$nextTick(() => {
+      this.updateCondensed();
+      this.updateActiveRoot();
+    });
   },
   beforeUnmount() {
     window.removeEventListener('scroll', this._onScroll);
@@ -177,6 +182,7 @@ export const CatalogView = {
     rootDomId(group) { return 'cat-root-' + group.key; },
     midDomId(sub) { return 'cat-mid-' + sub.key; },
     jumpToRoot(group) {
+      this.condensed = true;
       this.activeRoot = group.key;
       this.activeMid = null;
       this.$nextTick(() => {
@@ -185,12 +191,18 @@ export const CatalogView = {
       });
     },
     jumpToMid(group, sub) {
+      this.condensed = true;
       this.activeRoot = group.key;
       this.activeMid = sub.key;
       this.$nextTick(() => {
         const el = document.getElementById(this.midDomId(sub));
         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
+    },
+    updateCondensed() {
+      const y = window.scrollY;
+      if (!this.condensed && y > 24) this.condensed = true;
+      else if (this.condensed && y < 8) this.condensed = false;
     },
     updateActiveRoot() {
       if (this.tab !== 'products') return;
@@ -200,10 +212,10 @@ export const CatalogView = {
       let currentMid = null;
       for (const group of groups) {
         const rootEl = document.getElementById(this.rootDomId(group));
-        if (rootEl && rootEl.getBoundingClientRect().top <= 130) currentRoot = group.key;
+        if (rootEl && rootEl.getBoundingClientRect().top <= 140) currentRoot = group.key;
         for (const sub of group.mids) {
           const midEl = document.getElementById(this.midDomId(sub));
-          if (midEl && midEl.getBoundingClientRect().top <= 130) {
+          if (midEl && midEl.getBoundingClientRect().top <= 140) {
             currentRoot = group.key;
             currentMid = sub.key;
           }
@@ -370,6 +382,7 @@ export const CatalogView = {
   },
   template: `
 <div class="v-catalog">
+  <div class="catalog-sticky" :class="{ 'is-condensed': condensed }">
   <div class="page-head row-between catalog-head">
     <div class="seg catalog-seg" role="tablist">
       <button class="seg-btn" :class="{ 'is-on': tab === 'products' }" role="tab" :aria-selected="tab === 'products'"
@@ -387,25 +400,26 @@ export const CatalogView = {
     </div>
   </div>
 
-  <!-- 商品 -->
-  <template v-if="tab === 'products'">
-    <div class="card filter-card catalog-filter-card">
-      <div class="card-body">
-        <div class="catalog-filter-row">
-          <div class="input-search catalog-search">
-            <ui-icon name="search" :size="17" />
-            <input class="input" v-model="search" type="search" placeholder="搜名称 / SKU / 分类 / 标签 / 货位" aria-label="搜索商品">
-          </div>
-          <div class="chips-scroll catalog-tags" v-if="tags.length">
-            <button class="chip" :class="{ 'is-on': tag === 'all' }" :aria-pressed="tag === 'all'" @click="tag = 'all'">全部标签</button>
-            <button v-for="t in tags" :key="t.name" class="chip"
-                    :class="{ 'chip-brand': tag === t.name }" :aria-pressed="tag === t.name"
-                    @click="tag = t.name">#{{ t.name }}<span class="chip-count">{{ t.count }}</span></button>
-          </div>
+  <div class="card filter-card catalog-filter-card" v-if="tab === 'products'">
+    <div class="card-body">
+      <div class="catalog-filter-row">
+        <div class="input-search catalog-search">
+          <ui-icon name="search" :size="17" />
+          <input class="input" v-model="search" type="search" placeholder="搜名称 / SKU / 分类 / 标签 / 货位" aria-label="搜索商品">
+        </div>
+        <div class="chips-scroll catalog-tags" v-if="tags.length">
+          <button class="chip" :class="{ 'is-on': tag === 'all' }" :aria-pressed="tag === 'all'" @click="tag = 'all'">全部标签</button>
+          <button v-for="t in tags" :key="t.name" class="chip"
+                  :class="{ 'chip-brand': tag === t.name }" :aria-pressed="tag === t.name"
+                  @click="tag = t.name">#{{ t.name }}<span class="chip-count">{{ t.count }}</span></button>
         </div>
       </div>
     </div>
+  </div>
+  </div>
 
+  <!-- 商品 -->
+  <template v-if="tab === 'products'">
     <div class="catalog-layout" v-if="products.length">
       <nav class="cat-rail" aria-label="商品分类">
         <div class="cat-rail-title">分类</div>
