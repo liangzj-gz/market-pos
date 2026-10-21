@@ -212,10 +212,10 @@ export const CatalogView = {
       let currentMid = null;
       for (const group of groups) {
         const rootEl = document.getElementById(this.rootDomId(group));
-        if (rootEl && rootEl.getBoundingClientRect().top <= 140) currentRoot = group.key;
+        if (rootEl && rootEl.getBoundingClientRect().top <= 70) currentRoot = group.key;
         for (const sub of group.mids) {
           const midEl = document.getElementById(this.midDomId(sub));
-          if (midEl && midEl.getBoundingClientRect().top <= 140) {
+          if (midEl && midEl.getBoundingClientRect().top <= 70) {
             currentRoot = group.key;
             currentMid = sub.key;
           }
@@ -390,7 +390,7 @@ export const CatalogView = {
       <button class="seg-btn" :class="{ 'is-on': tab === 'combos' }" role="tab" :aria-selected="tab === 'combos'"
               @click="tab = 'combos'">套餐 <span class="mono">{{ stats.combos }}</span></button>
     </div>
-    <div class="row" style="gap:8px">
+    <div class="row catalog-actions" style="gap:8px">
       <button class="btn btn-icon" @click="openCatManager" aria-label="管理分类与标签" title="管理分类与标签">
         <ui-icon name="settings" :size="18" />
       </button>
