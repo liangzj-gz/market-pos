@@ -137,14 +137,12 @@ export const RegisterView = {
     midDomId(g) { return 'reg-mid-' + g.key; },
     scrollHost() { return window.matchMedia('(min-width: 900px)').matches ? this.$refs.pickPane : window; },
     revealCategoryAnchors() {
-      for (const row of this.$el.querySelectorAll('.reg-category-roots, .reg-category-mids')) {
-        const selected = row.querySelector('[aria-pressed="true"]');
-        if (!selected) continue;
-        const item = selected.getBoundingClientRect(), bounds = row.getBoundingClientRect();
-        if (item.left < bounds.left || item.right > bounds.right) {
-          row.scrollTo({ left: row.scrollLeft + item.left - bounds.left - (bounds.width - item.width) / 2,
-            behavior: 'instant' });
-        }
+      const rail = this.$refs.categoryRail;
+      const selected = rail?.querySelector('[aria-current="location"]');
+      if (!selected) return;
+      const item = selected.getBoundingClientRect(), bounds = rail.getBoundingClientRect();
+      if (item.top < bounds.top || item.bottom > bounds.bottom) {
+        rail.scrollTo({ top: rail.scrollTop + item.top - bounds.top - (bounds.height - item.height) / 2, behavior: 'instant' });
       }
     },
     jumpCategory(g, mid) {
@@ -391,16 +389,6 @@ export const RegisterView = {
             <ui-icon name="close" :size="15" />
           </button>
         </div>
-        <div class="reg-category-roots cat-rail-mobile-row" aria-label="商品大类导航" v-if="rootGroups.length">
-          <button v-for="g in rootGroups" :key="g.key" class="chip"
-                  :class="{ 'chip-brand': activeRoot === g.key }" :aria-pressed="activeRoot === g.key"
-                  @click="jumpCategory(g)">{{ g.name }}<span class="chip-count">{{ g.total }}</span></button>
-        </div>
-        <div class="reg-category-mids cat-rail-mobile-row" aria-label="商品中类导航" v-if="activeMids.length">
-          <button v-for="m in activeMids" :key="m.key" class="crm-mid"
-                  :class="{ 'is-on': activeMid === m.key }" :aria-pressed="activeMid === m.key"
-                  @click="jumpCategory(activeRootGroup, m)">{{ m.name }}<span>{{ m.items.length }}</span></button>
-        </div>
         </template>
       </div>
 
@@ -437,6 +425,22 @@ export const RegisterView = {
       </div></div>
 
       <template v-else>
+        <div class="reg-browse">
+          <nav class="cat-rail reg-category-rail" ref="categoryRail" aria-label="商品分类锚点">
+            <div class="cat-rail-title">分类</div>
+            <template v-for="g in rootGroups" :key="g.key">
+              <button class="cat-rail-item cat-rail-root" :class="{ 'is-current': activeRoot === g.key }"
+                      @click="jumpCategory(g)">
+                <span class="cr-dot"></span><span class="cr-name">{{ g.name }}</span><span class="cr-count mono">{{ g.total }}</span>
+              </button>
+              <button v-for="m in g.mids" :key="m.key" class="cat-rail-item cat-rail-mid"
+                      :class="{ 'is-active': activeMid === m.key }" :aria-current="activeMid === m.key ? 'location' : undefined"
+                      @click="jumpCategory(g, m)">
+                <span class="cr-subdot"></span><span class="cr-name">{{ m.name }}</span><span class="cr-count mono">{{ m.items.length }}</span>
+              </button>
+            </template>
+          </nav>
+          <div class="reg-products">
         <section v-for="g in rootGroups" :key="g.key" :id="rootDomId(g)" class="root-section">
           <div v-for="m in g.mids" :key="m.key" :id="midDomId(m)" class="prod-group">
             <h3 class="reg-group-label"><span>{{ g.name }}</span><span class="muted">/</span><b>{{ m.name }}</b><em>{{ m.items.length }}</em></h3>
@@ -457,6 +461,8 @@ export const RegisterView = {
         </div>
           </div>
         </section>
+          </div>
+        </div>
       </template>
       </template>
     </section>
