@@ -50,6 +50,8 @@ for ip in lan_ips():
 print("  Ctrl+C 停止\n", flush=True)
 
 socketserver.ThreadingTCPServer.allow_reuse_address = True
+socketserver.ThreadingTCPServer.request_queue_size = 64
+socketserver.ThreadingTCPServer.daemon_threads = True
 with socketserver.ThreadingTCPServer(("0.0.0.0", port), Handler) as httpd:
     httpd.serve_forever()
 PYCODE
