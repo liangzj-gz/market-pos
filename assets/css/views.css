@@ -481,7 +481,7 @@
 @media (min-width: 900px) {
   .catalog-sticky {
     position: sticky; top: 0; z-index: 25;
-    margin: -30px -34px 12px;
+    margin: -30px -34px 17px;
     padding: 8px 34px 0;
     border-bottom: 1px solid transparent;
     transition: padding var(--dur) var(--ease), border-color var(--dur) var(--ease),
@@ -682,7 +682,7 @@
 }
 @media (min-width: 900px) {
   .cat-rail { top: 52px; max-height: calc(100vh - 76px); }
-  .root-section, .root-section .prod-group { scroll-margin-top: 60px; }
+  .root-section, .root-section .prod-group { scroll-margin-top: 65px; }
 }
 
 @media (max-width: 520px) {
