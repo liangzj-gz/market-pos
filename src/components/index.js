@@ -26,7 +26,8 @@ export const UiSheet = {
     title: { type: String, default: '' },
     subtitle: { type: String, default: '' },
     wide: { type: Boolean, default: false },
-    xwide: { type: Boolean, default: false }
+    xwide: { type: Boolean, default: false },
+    medium: { type: Boolean, default: false }
   },
   emits: ['close'],
   mounted() {
@@ -41,7 +42,7 @@ export const UiSheet = {
   template: `
     <Teleport to="body">
       <div class="sheet-mask" @click.self="$emit('close')" role="dialog" aria-modal="true" :aria-label="title">
-        <div class="sheet" :class="{ 'sheet-wide': wide, 'sheet-xwide': xwide }">
+        <div class="sheet" :class="{ 'sheet-wide': wide, 'sheet-xwide': xwide, 'sheet-medium': medium }">
           <div class="sheet-grab"></div>
           <div class="sheet-head">
             <h2>{{ title }}</h2>

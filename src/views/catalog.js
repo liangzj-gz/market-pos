@@ -1098,10 +1098,10 @@ export const CatalogView = {
   </ui-sheet>
 
   <!-- 套餐表单 -->
-  <ui-sheet v-if="comboTarget" :title="comboTarget.id ? '编辑套餐' : '新增套餐'" @close="comboTarget = null">
+  <ui-sheet v-if="comboTarget" medium :title="comboTarget.id ? '编辑套餐' : '新增套餐'" @close="comboTarget = null">
     <div class="combo-form">
     <div class="form-grid">
-      <div class="field span-2">
+      <div class="field">
         <label>套餐名称 *</label>
         <input class="input" v-model="comboTarget.name" placeholder="如 十一套餐">
       </div>

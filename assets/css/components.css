@@ -313,6 +313,9 @@
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .sheet { background: rgba(255, 255, 255, .97); }
 }
+/* 中宽抽屉：套餐配置等需要一行多字段的弹窗 */
+.sheet-medium { max-width: 760px; }
+.sheet-medium .sheet-body { padding: 10px 20px 20px; }
 /* 宽版抽屉：iPad / 桌面用来放三栏分类 */
 .sheet-wide { max-width: 900px; }
 .sheet-wide .sheet-body { padding: 10px 22px 22px; }
