@@ -1,7 +1,7 @@
 /* 开单收银台：选货 → 看应收 → 收款，三步以内完成一单 */
 import {
   store, productsOnSale, combosOnSale, frequentIds,
-  stockState, balanceOf, actions, productById, comboById
+  stockState, balanceOf, actions, productById, comboById, tagLibrary
 } from '../data/store.js';
 import { money, moneyNum, num, r2, int } from '../util/format.js';
 import {
@@ -19,7 +19,7 @@ export const RegisterView = {
   data() {
     return {
       paying: false, submitting: false, receipt: null, confirmClear: false,
-      comboPick: null, pickGroups: [], activeRoot: null, activeMid: null, pickTab: 'products'
+      comboPick: null, pickGroups: [], activeRoot: null, activeMid: null, pickTab: 'products', tag: 'all'
     };
   },
   computed: {
@@ -33,10 +33,16 @@ export const RegisterView = {
     frequent() { return frequentIds.value; },
     demand() { return cartDemandByProduct(); },
     combos() { return combosOnSale.value; },
+    tags() {
+      return tagLibrary.value.map(t => ({
+        name: t.name, count: productsOnSale.value.filter(p => (p.tags || []).includes(t.name)).length
+      }));
+    },
     products() {
       const kw = this.reg.search.trim().toLowerCase();
       let list = productsOnSale.value.filter(p => {
         if (this.reg.onlyFrequent && !this.frequent.includes(p.id)) return false;
+        if (this.tag !== 'all' && !(p.tags || []).includes(this.tag)) return false;
         if (!kw) return true;
         return p.name.toLowerCase().includes(kw)
           || (p.series || '').toLowerCase().includes(kw)
@@ -381,13 +387,21 @@ export const RegisterView = {
                   @click="reg.onlyFrequent = !reg.onlyFrequent"><ui-icon name="spark" :size="14" /> 常卖</button>
         </div>
         <template v-if="pickTab === 'products'">
-        <div class="input-search">
+        <div class="catalog-filter-row reg-filter-row">
+        <div class="input-search catalog-search">
           <ui-icon name="search" :size="17" />
           <input class="input" v-model="reg.search" type="search" enterkeyhint="search"
-                 placeholder="搜名称 / 分类 / SKU" aria-label="搜索商品">
+                 placeholder="搜名称 / SKU / 分类 / 标签" aria-label="搜索商品">
           <button v-if="reg.search" class="pick-clear" @click="clearSearch" aria-label="清空搜索">
             <ui-icon name="close" :size="15" />
           </button>
+        </div>
+        <div class="chips-scroll catalog-tags" v-if="tags.length" role="group" aria-label="商品标签筛选">
+          <button class="chip" :class="{ 'is-on': tag === 'all' }" :aria-pressed="tag === 'all'" @click="tag = 'all'">全部标签</button>
+          <button v-for="t in tags" :key="t.name" class="chip"
+                  :class="{ 'chip-brand': tag === t.name }" :aria-pressed="tag === t.name"
+                  @click="tag = t.name">#{{ t.name }}<span class="chip-count">{{ t.count }}</span></button>
+        </div>
         </div>
         </template>
       </div>
@@ -419,8 +433,8 @@ export const RegisterView = {
       </div></div>
 
       <div v-else-if="!products.length" class="card"><div class="card-body">
-        <ui-empty icon="search" title="没有匹配的商品" text="换个关键词，或关闭「常卖」筛选。">
-          <button class="btn" @click="reg.search = ''; reg.onlyFrequent = false">重置筛选</button>
+        <ui-empty icon="search" title="没有匹配的商品" text="换个关键词、标签，或关闭「常卖」筛选。">
+          <button class="btn" @click="reg.search = ''; reg.onlyFrequent = false; tag = 'all'">重置筛选</button>
         </ui-empty>
       </div></div>
 

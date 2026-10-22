@@ -1423,6 +1423,15 @@
 .reg-modes .seg-btn { min-height: 28px; padding: 3px 14px; font-size: var(--fs-sm); }
 .reg-frequent { min-height: 28px; padding: 3px 10px; font-size: var(--fs-xs); }
 .v-register .pick-bar .input { min-height: 32px; height: 32px; padding-top: 4px; padding-bottom: 4px; font-size: var(--fs-sm); }
+.v-register .reg-filter-row { gap: 6px; }
+.v-register .reg-filter-row .catalog-search { min-width: 0; flex-basis: 240px; }
+.v-register .reg-filter-row .chips-scroll { margin-top: 0; }
+.v-register .reg-filter-row .chip { min-height: 26px; padding: 3px 9px; }
+@media (max-width: 899px) {
+  .v-register .reg-filter-row { flex-direction: column; align-items: stretch; }
+  .v-register .reg-filter-row .catalog-search { flex-basis: auto; width: 100%; }
+  .v-register .reg-filter-row .catalog-tags { flex: auto; }
+}
 .reg-browse { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 10px; align-items: start; }
 .reg-products { min-width: 0; }
 .v-register .reg-category-rail {
