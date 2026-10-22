@@ -823,7 +823,9 @@
   top: calc(var(--catalog-category-top, 0px) + 40px);
   z-index: 11;
   height: 34px;
-  padding: 6px 2px;
+  padding: 6px 12px;
+  border-radius: var(--r-sm);
+  background: linear-gradient(var(--fill), var(--fill)), var(--bg);
 }
 .catalog-root-head .root-name,
 .catalog-mid-head .pg-name {
