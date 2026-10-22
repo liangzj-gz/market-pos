@@ -584,6 +584,20 @@ export function childrenOf(db, parentId) {
     .sort((a, b) => (a.sort - b.sort) || a.name.localeCompare(b.name, 'zh-Hans-CN'));
 }
 
+/* 只调整同级显示顺序，保留分类 ID、归属和商品关联。 */
+export function moveCategory(db, id, direction) {
+  const category = categoryById(db, id);
+  if (!category) fail('CATEGORY_NOT_FOUND', '分类不存在');
+  if (direction !== -1 && direction !== 1) fail('CATEGORY_SORT', '请选择上移或下移');
+  const siblings = childrenOf(db, category.parent_id);
+  const from = siblings.findIndex(c => c.id === id);
+  const to = from + direction;
+  if (to < 0 || to >= siblings.length) return category;
+  siblings.splice(to, 0, siblings.splice(from, 1)[0]);
+  siblings.forEach((c, index) => { c.sort = index; });
+  return category;
+}
+
 /* 含子分类在内的商品数 */
 export function categoryProductCount(db, id) {
   const ids = new Set([id]);
@@ -617,7 +631,7 @@ export function upsertCategory(db, data) {
   const c = {
     id: nextId(db, 'category'), name,
     parent_id: parent ? parent.id : null,
-    sort: siblings.length,
+    sort: Math.max(-1, ...siblings.map(c => Number(c.sort) || 0)) + 1,
     created_at: new Date().toISOString()
   };
   db.categories.push(c);

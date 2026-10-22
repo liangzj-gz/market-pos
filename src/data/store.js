@@ -17,7 +17,7 @@ import {
   resolveAlert, buildStats, syncAlerts, expandCombo, computeTotal,
   deriveComboGroups, comboPartsOfOrderItem, comboSelectionsFromItems, productsInMid,
   buildCategoryTree, collapseCategoryDepth, categoryById, categoryPath, categoryLabel, categoryLevel,
-  childrenOf, categoryProductCount, upsertCategory,
+  childrenOf, categoryProductCount, upsertCategory, moveCategory,
   deleteCategory as deleteCategoryRule,
   addTag as addTagRule, renameTag as renameTagRule, deleteTag as deleteTagRule
 } from '../domain/rules.js';
@@ -661,6 +661,7 @@ export const demoInfo = computed(() => ({
    ============================================================ */
 export const actions = {
   saveCategory(data)      { return act(() => upsertCategory(store.db, data)); },
+  moveCategory(id, direction) { return act(() => moveCategory(store.db, id, direction)); },
   removeCategory(id)      { return act(() => deleteCategoryRule(store.db, id)); },
   addTag(name)            { return act(() => addTagRule(store.db, name)); },
   renameTag(from, to)     { return act(() => renameTagRule(store.db, from, to)); },

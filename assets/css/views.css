@@ -917,6 +917,9 @@
 .cat-item.grow { flex: 1; min-height: 48px; border-radius: 0; }
 .cat-actions { display: flex; align-items: center; gap: 2px; flex: none; }
 .cat-actions .btn { padding: 4px 8px; font-size: var(--fs-xs); }
+.cat-actions .cat-move { min-width: 32px; min-height: 36px; padding: 4px; }
+.cat-actions .btn:disabled { opacity: .35; }
+.cat-sort-hint { margin-top: 10px; line-height: 1.6; }
 .cat-edit-row {
   display: flex; align-items: center; gap: 6px;
   padding: 7px; border-bottom: 1px solid var(--stroke);

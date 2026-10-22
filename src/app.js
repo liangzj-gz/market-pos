@@ -8,7 +8,7 @@ import { RegisterView } from './views/register.js?v=register-sidebar-20261022';
 import { OrdersView } from './views/orders.js';
 import { InventoryView } from './views/inventory.js';
 import { AlertsView } from './views/alerts.js';
-import { CatalogView } from './views/catalog.js?v=catalog-sidebar-20261022';
+import { CatalogView } from './views/catalog.js?v=category-sort-20261022';
 import { StatsView } from './views/stats.js';
 import { SettingsView } from './views/settings.js';
 

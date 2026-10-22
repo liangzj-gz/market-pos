@@ -580,6 +580,17 @@ export const CatalogView = {
       }));
     },
     pick(depth, id) { this.catPath = [...this.catPath.slice(0, depth), id]; },
+    canMoveCategory(id, direction) {
+      if (this.catEdit) return false;
+      const category = store.db.categories.find(c => c.id === id);
+      if (!category) return false;
+      const siblings = childrenIn(category.parent_id);
+      const index = siblings.findIndex(c => c.id === id);
+      return index + direction >= 0 && index + direction < siblings.length;
+    },
+    moveCategory(id, direction) {
+      if (this.canMoveCategory(id, direction)) actions.moveCategory(id, direction);
+    },
     parentAt(depth) { return depth === 0 ? null : (this.catPath[depth - 1] || null); },
     canAdd(depth) { return depth < 2 && (depth === 0 || !!this.parentAt(depth)); },
     addIn(depth) {
@@ -1245,6 +1256,12 @@ export const CatalogView = {
             </div>
           </div>
           <footer class="cat-col-foot">
+            <button class="btn btn-sm btn-quiet" @click="moveCategory(catPath[ci], -1)" :disabled="!canMoveCategory(catPath[ci], -1)">
+              <ui-icon name="chevronUp" :size="13" /> 上移
+            </button>
+            <button class="btn btn-sm btn-quiet" @click="moveCategory(catPath[ci], 1)" :disabled="!canMoveCategory(catPath[ci], 1)">
+              <ui-icon name="chevronDown" :size="13" /> 下移
+            </button>
             <button class="btn btn-sm btn-quiet" @click="addIn(ci)" :disabled="!canAdd(ci)">
               <ui-icon name="plus" :size="13" /> 新增
             </button>
@@ -1282,10 +1299,18 @@ export const CatalogView = {
                 <span class="cat-count mono">{{ c.count }}</span>
                 <ui-icon v-if="c.hasChildren" name="chevronRight" :size="14" class="cat-chev" />
               </button>
-              <template v-if="catEditing">
+              <span class="cat-actions" v-if="catEditing">
+                <button class="btn btn-sm btn-quiet cat-move" @click="moveCategory(c.id, -1)"
+                        :disabled="!canMoveCategory(c.id, -1)" :aria-label="'上移' + c.name" title="上移">
+                  <ui-icon name="chevronUp" :size="16" />
+                </button>
+                <button class="btn btn-sm btn-quiet cat-move" @click="moveCategory(c.id, 1)"
+                        :disabled="!canMoveCategory(c.id, 1)" :aria-label="'下移' + c.name" title="下移">
+                  <ui-icon name="chevronDown" :size="16" />
+                </button>
                 <button class="btn btn-sm btn-quiet" @click="renameNode(c)">改名</button>
                 <button class="btn btn-sm btn-quiet cat-del" @click="askDeleteNode(c)">删除</button>
-              </template>
+              </span>
             </template>
           </div>
 
@@ -1304,13 +1329,14 @@ export const CatalogView = {
         </div>
 
         <div class="cat-drill-foot">
-          <button class="btn btn-sm" @click="catEditing = !catEditing">{{ catEditing ? '完成' : '编辑' }}</button>
+          <button class="btn btn-sm" @click="catEditing = !catEditing" :disabled="!!catEdit">{{ catEditing ? '完成' : '排序 / 编辑' }}</button>
           <button class="btn btn-sm btn-primary" @click="addIn(catPath.length)" :disabled="!canAdd(catPath.length)">
             <ui-icon name="plus" :size="14" /> 新增分类
           </button>
         </div>
         <p class="xs muted" style="margin-top:8px">最多两级，商品挂在最后选中的一级</p>
       </div>
+      <p class="xs muted cat-sort-hint">同级分类可上移、下移，顺序自动保存并同步到商品页和开单页。</p>
     </template>
 
     <template v-else>
