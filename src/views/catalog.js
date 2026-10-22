@@ -169,11 +169,6 @@ export const CatalogView = {
     activeRootMids() {
       return this.activeRootGroup ? this.activeRootGroup.mids : [];
     },
-    activeMidItem() {
-      const group = this.activeRootGroup;
-      if (!group) return null;
-      return group.mids.find(m => m.key === this.activeMid) || group.mids[0] || null;
-    },
     /* 批量导入：文本一变就重新解析，预览区始终和输入同步 */
     importParsed() {
       if (!String(this.importText || '').trim()) return null;
@@ -302,15 +297,17 @@ export const CatalogView = {
       if (this.tab !== 'products') return;
       const groups = this.rootGroups;
       if (!groups.length) { this.activeRoot = null; this.activeMid = null; return; }
-      const threshold = window.matchMedia('(min-width: 900px)').matches ? 100 : 140;
+      const desktop = window.matchMedia('(min-width: 900px)').matches;
+      const rootThreshold = desktop ? 52 : 140;
+      const midThreshold = desktop ? 88 : 140;
       let currentRoot = groups[0].key;
       let currentMid = null;
       for (const group of groups) {
         const rootEl = document.getElementById(this.rootDomId(group));
-        if (rootEl && rootEl.getBoundingClientRect().top <= threshold) currentRoot = group.key;
+        if (rootEl && rootEl.getBoundingClientRect().top <= rootThreshold) currentRoot = group.key;
         for (const sub of group.mids) {
           const midEl = document.getElementById(this.midDomId(sub));
-          if (midEl && midEl.getBoundingClientRect().top <= threshold) {
+          if (midEl && midEl.getBoundingClientRect().top <= midThreshold) {
             currentRoot = group.key;
             currentMid = sub.key;
           }
@@ -776,14 +773,6 @@ export const CatalogView = {
             </button>
           </div>
         </nav>
-
-        <div class="cat-context-bar" v-if="activeRootGroup">
-          <span class="ccb-dot"></span>
-          <span class="ccb-root">{{ activeRootGroup.name }}</span>
-          <ui-icon name="chevronRight" :size="12" class="ccb-chev" />
-          <span class="ccb-mid">{{ activeMidItem ? activeMidItem.name : '全部' }}</span>
-          <span class="ccb-count mono" v-if="activeMidItem">{{ activeMidItem.items.length }}</span>
-        </div>
 
         <section v-for="g in rootGroups" :key="g.key" :id="rootDomId(g)" class="root-section">
           <div class="root-head">
