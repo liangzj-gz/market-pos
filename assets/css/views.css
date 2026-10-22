@@ -1469,6 +1469,41 @@
 .v-register .cart-head, .v-register .cart-foot { flex-shrink: 0; }
 .v-register .cart-body { min-height: 0; }
 .v-register .cart-total { color: var(--label); }
+.v-register .cart-head { padding: 10px 12px; gap: 6px; }
+.v-register .cart-head h3 { font-size: var(--fs-sm); gap: 4px; }
+.v-register .cart-head .small { font-size: var(--fs-xs); }
+.v-register .cart-head .btn { min-height: 26px; padding: 3px 6px; font-size: var(--fs-xs); }
+.v-register .cart-head .btn-icon { min-width: 28px; }
+.v-register .cart-body { padding: 5px 12px; }
+.v-register .cart-line { padding: 9px 0; }
+.v-register .cl-name { font-size: var(--fs-sm); }
+.v-register .cl-del { width: 24px; height: 24px; }
+.v-register .cl-bottom { gap: 6px; margin-top: 5px; }
+.v-register .cl-right { gap: 6px; }
+.v-register .gift-check { gap: 4px; }
+.v-register .gift-check .xs { font-size: 11px; }
+.v-register .gift-check .switch-track { width: 28px; height: 16px; }
+.v-register .gift-check .switch-track::after { width: 12px; height: 12px; top: 2px; left: 2px; }
+.v-register .gift-check input:checked + .switch-track::after { transform: translateX(12px); }
+.v-register .cl-price-input { width: 54px; min-height: 30px; padding: 3px 6px; font-size: var(--fs-sm); }
+.v-register .stepper { padding: 2px; }
+.v-register .stepper button { width: 28px; height: 28px; }
+.v-register .stepper-input { width: 28px; min-width: 28px; min-height: 28px; font-size: var(--fs-sm); }
+.v-register .cl-amt { min-width: 44px; font-size: var(--fs-sm); }
+.v-register .cart-body .field .input { min-height: 34px; padding: 6px 10px; font-size: var(--fs-sm); }
+.v-register .cart-foot { padding: 11px 12px calc(11px + env(safe-area-inset-bottom)); }
+.v-register .cart-total-row { margin-bottom: 8px; }
+.v-register .cart-total-label { font-size: var(--fs-xs); }
+.v-register .cart-total { font-size: 26px; }
+.v-register .cart-actions { gap: 7px; }
+.v-register .cart-actions .btn { min-height: 40px; padding: 7px 18px; font-size: var(--fs-md); }
+.v-register .cart-actions .btn svg { width: 16px; height: 16px; }
+.v-register .cart-foot > .xs { font-size: 11px; }
+@media (max-width: 520px) {
+  .v-register .cl-price-input, .v-register .stepper-input,
+  .v-register .cart-body .field .input { font-size: 16px; }
+  .v-register .cart-actions .btn { min-height: 44px; }
+}
 .v-register .cart-bar { background: var(--glass-chrome); color: var(--label); border-radius: var(--r-md); box-shadow: var(--sh-2); border: 1px solid var(--stroke); }
 .cart-summary { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; text-align: left; }
 .cart-summary .cart-bar-count { color: var(--bg); }
