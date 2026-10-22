@@ -299,7 +299,7 @@ export const CatalogView = {
       if (!groups.length) { this.activeRoot = null; this.activeMid = null; return; }
       const desktop = window.matchMedia('(min-width: 900px)').matches;
       const rootThreshold = desktop ? 52 : 140;
-      const midThreshold = desktop ? 88 : 140;
+      const midThreshold = desktop ? 78 : 140;
       let currentRoot = groups[0].key;
       let currentMid = null;
       for (const group of groups) {
