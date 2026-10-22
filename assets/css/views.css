@@ -825,7 +825,7 @@
   height: 34px;
   padding: 6px 12px;
   border-radius: var(--r-sm);
-  background: linear-gradient(var(--fill), var(--fill)), var(--bg);
+  background: linear-gradient(var(--glass), var(--glass)), var(--bg);
 }
 .catalog-root-head .root-name,
 .catalog-mid-head .pg-name {
