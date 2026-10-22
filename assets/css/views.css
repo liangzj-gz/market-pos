@@ -1453,13 +1453,13 @@
 .reg-group-label b { color: var(--label-2); font-weight: 600; }
 .reg-group-label em { font-style: normal; margin-left: auto; font-variant-numeric: tabular-nums; }
 .v-register .pick-grid { gap: 8px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 112px), 1fr)); }
-.v-register .pick-cell { height: 136px; min-height: 0; padding: 10px; box-shadow: none; background: var(--glass-strong); border-color: var(--stroke); }
+.v-register .pick-cell { height: 120px; min-height: 0; padding: 8px; box-shadow: none; background: var(--glass-strong); border-color: var(--stroke); }
 .v-register .pick-cell:active { transform: none; }
 .v-register .pick-cell.has-qty { background: linear-gradient(var(--blue-soft), var(--blue-soft)), var(--bg); border-color: var(--blue-line); }
 .pick-product-main { display: flex; flex-direction: column; align-items: stretch; text-align: left; width: 100%; height: 100%; min-width: 0; }
 .v-register .pick-name { flex: none; height: 35px; font-size: var(--fs-sm); line-height: 1.35; font-weight: 600; }
-.v-register .pick-price { font-size: var(--fs-lg); margin-top: 6px; }
-.v-register .pick-stock { margin-top: 2px; }
+.v-register .pick-price { font-size: var(--fs-lg); line-height: 1.3; margin-top: 2px; }
+.v-register .pick-stock { line-height: 1.3; margin-top: 0; }
 .pick-add, .pick-quantity { position: absolute; bottom: 7px; right: 7px; display: flex; align-items: center; justify-content: center; }
 .pick-add, .pick-quantity button { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 50%; color: var(--blue); background: var(--blue-soft); }
 .pick-quantity { gap: 4px; border-radius: var(--r-pill); background: var(--bg); }
