@@ -809,13 +809,13 @@
   .cat-rail { top: 52px; max-height: calc(100vh - 76px); }
   .root-head {
     position: sticky; top: 42px; z-index: 23;
-    background: transparent;
+    background: linear-gradient(to bottom, var(--bg) 0%, var(--bg) 72%, rgba(239, 245, 252, 0) 100%);
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
   .pg-head {
     position: sticky; top: 68px; z-index: 22;
-    background: transparent;
+    background: linear-gradient(to bottom, var(--bg) 0%, var(--bg) 72%, rgba(239, 245, 252, 0) 100%);
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
