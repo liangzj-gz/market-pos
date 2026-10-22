@@ -1450,21 +1450,72 @@
   .bi-sheet-hint { display: block; margin: 0 0 8px; }
 }
 
-/* 开单分类与商品浏览页保持一致，搜索和导航占据独立的顶部空间。 */
-.v-register .pick-bar > .input-search { margin-right: 84px; }
-.reg-frequent { position: absolute; top: 12px; right: 0; }
+/* 开单：两行分类即当前浏览位置，列表标题仅作静态分隔。 */
+.v-register .pick-bar { padding: 8px 0; margin: -8px 0 10px; background: var(--bg); border-bottom: 0; }
+.reg-mode-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 7px; }
+.reg-modes { margin-bottom: 0; }
+.reg-modes .seg-btn { min-height: 28px; padding: 3px 14px; font-size: var(--fs-sm); }
+.reg-frequent { min-height: 28px; padding: 3px 10px; font-size: var(--fs-xs); }
+.v-register .pick-bar .input { min-height: 32px; height: 32px; padding-top: 4px; padding-bottom: 4px; font-size: var(--fs-sm); }
 .reg-category-roots, .reg-category-mids {
-  display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin-top: 8px;
+  display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin-top: 6px; min-height: 28px;
 }
 .reg-category-roots::-webkit-scrollbar, .reg-category-mids::-webkit-scrollbar { display: none; }
 .reg-category-roots .chip, .reg-category-mids .crm-mid { flex: none; white-space: nowrap; }
+.reg-category-roots .chip { min-height: 28px; padding: 4px 10px; font-size: var(--fs-xs); }
+.reg-category-mids { border-radius: var(--r-sm); background: linear-gradient(var(--glass), var(--glass)), var(--bg); padding: 3px; }
 .reg-category-mids .crm-mid {
-  display: inline-flex; align-items: center; gap: 5px;
-  min-height: 26px; padding: 3px 9px;
-  border: 1px solid var(--stroke); border-radius: var(--r-pill);
-  color: var(--label-3); font-size: var(--fs-xs); font-weight: 550;
+  display: inline-flex; align-items: center; gap: 5px; min-height: 26px; padding: 3px 9px;
+  border-radius: var(--r-pill); color: var(--label-3); font-size: var(--fs-xs); font-weight: 550;
 }
-.reg-category-mids .crm-mid.is-on { background: var(--blue-soft); color: var(--blue); border-color: transparent; }
+.reg-category-mids .crm-mid.is-on { background: var(--blue-soft); color: var(--blue); }
 .reg-category-mids .crm-mid span { opacity: .6; }
-.v-register .catalog-mid-head + .pick-grid { padding-top: 10px; }
-@media (min-width: 900px) { .v-register .pick-bar { top: 0; } }
+.v-register .root-section, .v-register .root-section .prod-group { scroll-margin-top: calc(var(--reg-toolbar-height) + 8px); }
+.v-register .root-section + .root-section { margin-top: 22px; }
+.v-register .root-section .prod-group + .prod-group { margin-top: 18px; }
+.reg-group-label { display: flex; align-items: center; gap: 7px; margin: 0 2px 8px; font-size: var(--fs-xs); color: var(--label-3); font-weight: 500; }
+.reg-group-label b { color: var(--label-2); font-weight: 600; }
+.reg-group-label em { font-style: normal; margin-left: auto; font-variant-numeric: tabular-nums; }
+.v-register .pick-grid { gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.v-register .pick-cell { height: 136px; min-height: 0; padding: 10px; box-shadow: none; background: var(--glass-strong); border-color: var(--stroke); }
+.v-register .pick-cell:active { transform: none; }
+.v-register .pick-cell.has-qty { background: linear-gradient(var(--blue-soft), var(--blue-soft)), var(--bg); border-color: var(--blue-line); }
+.pick-product-main { display: flex; flex-direction: column; align-items: stretch; text-align: left; width: 100%; height: 100%; min-width: 0; }
+.v-register .pick-name { flex: none; height: 35px; font-size: var(--fs-sm); line-height: 1.35; font-weight: 600; }
+.v-register .pick-price { font-size: var(--fs-lg); margin-top: 6px; }
+.v-register .pick-stock { margin-top: 2px; }
+.pick-add, .pick-quantity { position: absolute; bottom: 7px; right: 7px; display: flex; align-items: center; justify-content: center; }
+.pick-add, .pick-quantity button { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 50%; color: var(--blue); background: var(--blue-soft); }
+.pick-quantity { gap: 4px; border-radius: var(--r-pill); background: var(--bg); }
+.pick-quantity b { min-width: 18px; text-align: center; color: var(--blue-deep); font-size: var(--fs-sm); }
+.pick-quantity button:first-child { background: transparent; }
+.v-register .cart-panel { box-shadow: none; border-color: var(--stroke); }
+.v-register .cart-head, .v-register .cart-foot { flex-shrink: 0; }
+.v-register .cart-body { min-height: 0; }
+.v-register .cart-total { color: var(--label); }
+.v-register .cart-bar { background: var(--glass-chrome); color: var(--label); border-radius: var(--r-md); box-shadow: var(--sh-2); border: 1px solid var(--stroke); }
+.cart-summary { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; text-align: left; }
+.cart-summary .cart-bar-count { color: var(--bg); }
+.cart-summary .cart-bar-text em { opacity: 1; color: var(--label-3); }
+.cart-direct-pay { min-width: 80px; border-radius: var(--r-pill); }
+@media (max-width: 899px) {
+  .v-register { padding-bottom: 90px; }
+  .v-register .root-section:last-child > .prod-group:last-child { min-height: calc(var(--reg-pane-height) - var(--reg-toolbar-height) - var(--topbar-h)); }
+}
+@media (min-width: 900px) {
+  .content:has(> .v-register) { padding-bottom: 30px; }
+  .v-register .reg-layout { gap: 18px; grid-template-columns: minmax(0, 1fr) 320px; }
+  .v-register .reg-pick { height: calc(100dvh - 60px); overflow-y: auto; overscroll-behavior-y: contain; padding-right: 8px; scrollbar-width: thin; }
+  .v-register .pick-bar { top: 0; margin-top: 0; padding-top: 0; z-index: 15; }
+  .v-register .pick-grid { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); }
+  .v-register .reg-cart { top: 30px; }
+  .v-register .cart-panel { max-height: calc(100dvh - 60px); }
+  .v-register .cart-body { max-height: none; overflow-y: auto; }
+  .v-register .root-section:last-child > .prod-group:last-child { min-height: calc(var(--reg-pane-height) - var(--reg-toolbar-height) - 8px); }
+}
+
+.reg-cart-close, .reg-cart-backdrop { display: none; }
+@media (max-width: 899px) {
+  .reg-cart-close { display: inline-flex; }
+  .reg-cart-backdrop { display: block; position: fixed; inset: 0; z-index: 44; background: var(--fill-2); }
+}

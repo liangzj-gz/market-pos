@@ -19,7 +19,7 @@ export const RegisterView = {
   data() {
     return {
       paying: false, submitting: false, receipt: null, confirmClear: false,
-      comboPick: null, pickGroups: [], activeRoot: null, activeMid: null
+      comboPick: null, pickGroups: [], activeRoot: null, activeMid: null, pickTab: 'products'
     };
   },
   computed: {
@@ -92,7 +92,16 @@ export const RegisterView = {
     }
   },
   watch: {
-    rootGroups() { this.$nextTick(this.refreshCategories); }
+    rootGroups() { this._anchor = null; this.$nextTick(this.refreshCategories); },
+    pickTab() {
+      this._anchor = null;
+      this.$nextTick(() => {
+        this.refreshCategories();
+        this.scrollHost().scrollTo({ top: 0, behavior: 'instant' });
+      });
+    },
+    activeRoot() { this.$nextTick(this.revealCategoryAnchors); },
+    activeMid() { this.$nextTick(this.revealCategoryAnchors); }
   },
   mounted() {
     this._categoryScroll = () => {
@@ -103,6 +112,11 @@ export const RegisterView = {
       });
     };
     window.addEventListener('scroll', this._categoryScroll, { passive: true });
+    this.$refs.pickPane.addEventListener('scroll', this._categoryScroll, { passive: true });
+    this._cancelAnchor = () => { this._anchor = null; };
+    window.addEventListener('wheel', this._cancelAnchor, { passive: true });
+    window.addEventListener('touchstart', this._cancelAnchor, { passive: true });
+    window.addEventListener('keydown', this._cancelAnchor);
     window.addEventListener('resize', this._categoryScroll, { passive: true });
     this._categoryObserver = new ResizeObserver(() => this.refreshCategories());
     this._categoryObserver.observe(this.$refs.pickBar);
@@ -110,6 +124,10 @@ export const RegisterView = {
   },
   beforeUnmount() {
     window.removeEventListener('scroll', this._categoryScroll);
+    this.$refs.pickPane.removeEventListener('scroll', this._categoryScroll);
+    window.removeEventListener('wheel', this._cancelAnchor);
+    window.removeEventListener('touchstart', this._cancelAnchor);
+    window.removeEventListener('keydown', this._cancelAnchor);
     window.removeEventListener('resize', this._categoryScroll);
     this._categoryObserver.disconnect();
     if (this._categoryRaf) cancelAnimationFrame(this._categoryRaf);
@@ -117,17 +135,46 @@ export const RegisterView = {
   methods: {
     rootDomId(g) { return 'reg-root-' + g.key; },
     midDomId(g) { return 'reg-mid-' + g.key; },
+    scrollHost() { return window.matchMedia('(min-width: 900px)').matches ? this.$refs.pickPane : window; },
+    revealCategoryAnchors() {
+      for (const row of this.$el.querySelectorAll('.reg-category-roots, .reg-category-mids')) {
+        const selected = row.querySelector('[aria-pressed="true"]');
+        if (!selected) continue;
+        const item = selected.getBoundingClientRect(), bounds = row.getBoundingClientRect();
+        if (item.left < bounds.left || item.right > bounds.right) {
+          row.scrollTo({ left: row.scrollLeft + item.left - bounds.left - (bounds.width - item.width) / 2,
+            behavior: 'instant' });
+        }
+      }
+    },
     jumpCategory(g, mid) {
+      const target = mid || g.mids[0];
+      this._anchor = { root: g.key, mid: target.key, until: performance.now() + 1600 };
+      this.activeRoot = g.key;
+      this.activeMid = target.key;
       this.$nextTick(() => {
         this.refreshCategories();
-        document.getElementById(mid ? this.midDomId(mid) : this.rootDomId(g))?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const el = document.getElementById(this.midDomId(target));
+        if (!el) return;
+        const host = this.scrollHost();
+        const bar = this.$refs.pickBar;
+        const toolbarBottom = (host === window ? 0 : host.getBoundingClientRect().top)
+          + (parseFloat(getComputedStyle(bar).top) || 0) + bar.getBoundingClientRect().height;
+        const y = (host === window ? window.scrollY : host.scrollTop) + el.getBoundingClientRect().top - toolbarBottom - 8;
+        this._anchor.y = y;
+        host.scrollTo({ top: y, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
       });
     },
     refreshCategories() {
       const bar = this.$refs.pickBar;
-      const top = parseFloat(getComputedStyle(bar).top) || 0;
-      const threshold = top + bar.getBoundingClientRect().height;
-      this.$el.style.setProperty('--catalog-category-top', threshold + 'px');
+      const height = bar.getBoundingClientRect().height;
+      const threshold = bar.getBoundingClientRect().bottom + 8;
+      this.$el.style.setProperty('--reg-toolbar-height', height + 'px');
+      this.$el.style.setProperty('--reg-pane-height', this.scrollHost() === window ? window.innerHeight + 'px' : this.$refs.pickPane.clientHeight + 'px');
+      const anchor = this._anchor;
+      const scrollY = this.scrollHost() === window ? window.scrollY : this.$refs.pickPane.scrollTop;
+      if (anchor && performance.now() < anchor.until && (anchor.y === undefined || Math.abs(scrollY - anchor.y) > 2)) return;
+      this._anchor = null;
       let root = this.rootGroups[0]?.key || null;
       let mid = this.rootGroups[0]?.mids[0]?.key || null;
       for (const g of this.rootGroups) {
@@ -138,7 +185,7 @@ export const RegisterView = {
         }
         for (const m of g.mids) {
           const el = document.getElementById(this.midDomId(m));
-          if (el && el.getBoundingClientRect().top <= threshold + 41) { root = g.key; mid = m.key; }
+          if (el && el.getBoundingClientRect().top <= threshold + 1) { root = g.key; mid = m.key; }
         }
       }
       this.activeRoot = root;
@@ -146,6 +193,10 @@ export const RegisterView = {
     },
     money, moneyNum, num, r2, int,
     addProduct(p) { addProduct(p); this.bump(); },
+    decreaseProduct(p) {
+      const line = this.cart.find(l => l.key === 'p' + p.id);
+      if (line) decLine(line);
+    },
     addCombo(c) {
       if (comboHasGroups(c)) { this.openComboPicker(c); return; }
       addCombo(c); this.bump();
@@ -321,8 +372,17 @@ export const RegisterView = {
 <div class="v-register">
   <div class="reg-layout">
     <!-- 选货 -->
-    <section class="reg-pick">
+    <section class="reg-pick" ref="pickPane" aria-label="选购商品">
       <div class="pick-bar" ref="pickBar">
+        <div class="reg-mode-row">
+          <div class="seg reg-modes" role="tablist" aria-label="选货类型">
+            <button class="seg-btn" :class="{ 'is-on': pickTab === 'products' }" role="tab" :aria-selected="pickTab === 'products'" @click="pickTab = 'products'">商品</button>
+            <button class="seg-btn" :class="{ 'is-on': pickTab === 'combos' }" role="tab" :aria-selected="pickTab === 'combos'" @click="pickTab = 'combos'">套餐</button>
+          </div>
+          <button v-if="pickTab === 'products'" class="chip chip-freq reg-frequent" :class="{ 'is-on': reg.onlyFrequent }" :aria-pressed="reg.onlyFrequent"
+                  @click="reg.onlyFrequent = !reg.onlyFrequent"><ui-icon name="spark" :size="14" /> 常卖</button>
+        </div>
+        <template v-if="pickTab === 'products'">
         <div class="input-search">
           <ui-icon name="search" :size="17" />
           <input class="input" v-model="reg.search" type="search" enterkeyhint="search"
@@ -341,13 +401,10 @@ export const RegisterView = {
                   :class="{ 'is-on': activeMid === m.key }" :aria-pressed="activeMid === m.key"
                   @click="jumpCategory(activeRootGroup, m)">{{ m.name }}<span>{{ m.items.length }}</span></button>
         </div>
-        <button class="chip chip-freq reg-frequent" :class="{ 'is-on': reg.onlyFrequent }" :aria-pressed="reg.onlyFrequent"
-                @click="reg.onlyFrequent = !reg.onlyFrequent">
-          <ui-icon name="spark" :size="14" /> 常卖
-        </button>
+        </template>
       </div>
 
-      <div class="card" v-if="combos.length">
+      <div class="card" v-if="pickTab === 'combos' && combos.length">
         <div class="card-head"><h3><ui-icon name="layers" :size="16" /> 套餐</h3><span class="hint">点一下选品入单</span></div>
         <div class="card-body combo-list">
           <button v-for="c in combos" :key="c.id" class="combo-cell" :class="{ 'has-qty': comboInCart(c) }" @click="addCombo(c)">
@@ -362,6 +419,11 @@ export const RegisterView = {
         </div>
       </div>
 
+      <div v-if="pickTab === 'combos' && !combos.length" class="card"><div class="card-body">
+        <ui-empty icon="layers" title="暂无在售套餐" text="可切回商品继续选购。" />
+      </div></div>
+
+      <template v-if="pickTab === 'products'">
       <div v-if="emptyCatalog" class="card"><div class="card-body">
         <ui-empty icon="products" title="还没有商品" text="先到「商品」页添加在售商品，或在「设置」里载入演示数据。">
           <button class="btn btn-primary" @click="store.ui.view = 'catalog'">去添加商品</button>
@@ -376,37 +438,37 @@ export const RegisterView = {
 
       <template v-else>
         <section v-for="g in rootGroups" :key="g.key" :id="rootDomId(g)" class="root-section">
-          <div class="root-head catalog-root-head" aria-label="商品大类">
-            <span class="root-bar"></span><span class="root-name" :title="g.name">{{ g.name }}</span>
-            <span class="root-count mono">{{ g.total }}</span>
-          </div>
           <div v-for="m in g.mids" :key="m.key" :id="midDomId(m)" class="prod-group">
-            <div class="pg-head catalog-mid-head" aria-label="商品中类">
-              <span class="pg-dot"></span><span class="pg-name" :title="m.name">{{ m.name }}</span>
-              <span class="pg-count mono">{{ m.items.length }}</span><span class="pg-rule"></span>
-            </div>
+            <h3 class="reg-group-label"><span>{{ g.name }}</span><span class="muted">/</span><b>{{ m.name }}</b><em>{{ m.items.length }}</em></h3>
         <div class="pick-grid">
-          <button v-for="p in m.items" :key="p.id" class="pick-cell" :class="{ 'has-qty': inCart(p), 'is-low': stockLeft(p).low }"
-                  @click="addProduct(p)" :aria-label="'加入 ' + p.name">
-            <span class="pick-badge mono" v-if="inCart(p)">{{ inCart(p) }}</span>
-            <span class="pick-name">{{ p.name }}</span>
-            <span class="pick-price mono">{{ money(p.list_price) }}</span>
-            <span class="pick-stock" :class="{ low: stockLeft(p).low }">
-              {{ stockLeft(p).text }}
-            </span>
-          </button>
+          <article v-for="p in m.items" :key="p.id" class="pick-cell" :class="{ 'has-qty': inCart(p), 'is-low': stockLeft(p).low }">
+            <button class="pick-product-main" @click="addProduct(p)" :aria-label="'加入 ' + p.name">
+              <span class="pick-name" :title="p.name">{{ p.name }}</span>
+              <span class="pick-price mono">{{ money(p.list_price) }}</span>
+              <span class="pick-stock" :class="{ low: stockLeft(p).low }">{{ stockLeft(p).text }}</span>
+            </button>
+            <div class="pick-quantity" v-if="inCart(p)">
+              <button @click="decreaseProduct(p)" :aria-label="'减少 ' + p.name"><ui-icon name="minus" :size="14" /></button>
+              <b class="mono" :aria-label="'已选 ' + inCart(p) + ' 件'">{{ inCart(p) }}</b>
+              <button @click="addProduct(p)" :aria-label="'增加 ' + p.name"><ui-icon name="plus" :size="14" /></button>
+            </div>
+            <button v-else class="pick-add" @click="addProduct(p)" :aria-label="'增加 ' + p.name"><ui-icon name="plus" :size="15" /></button>
+          </article>
         </div>
           </div>
         </section>
       </template>
+      </template>
     </section>
 
     <!-- 购物车：桌面右侧常驻，移动端底部抽屉 -->
-    <aside class="reg-cart" :class="{ 'is-open': cartOpen }">
+    <button v-if="cartOpen" class="reg-cart-backdrop" @click="cartOpen = false" aria-label="关闭本单遮罩"></button>
+    <aside class="reg-cart" :class="{ 'is-open': cartOpen }" @keydown.esc="cartOpen = false">
       <div class="cart-panel">
         <div class="cart-head">
           <h3><ui-icon name="register" :size="16" /> 本单</h3>
           <span class="mono small">{{ lines }} 行 · {{ pieces }} 件</span>
+          <button class="btn btn-quiet btn-icon reg-cart-close" @click="cartOpen = false" aria-label="收起本单"><ui-icon name="close" :size="16" /></button>
           <button class="btn btn-quiet btn-sm" v-if="hasItems" @click="confirmClear = true">
             <ui-icon name="trash" :size="14" /> 清空
           </button>
@@ -452,7 +514,7 @@ export const RegisterView = {
         </div>
 
         <div class="cart-body cart-empty" v-else>
-          <ui-empty icon="register" title="还没选货" text="左边点商品就进单，套餐点一下整套展开。" />
+          <ui-empty icon="register" title="还没选货" text="点商品加入本单，也可切换套餐选购。" />
         </div>
 
         <div class="cart-foot">
@@ -473,15 +535,14 @@ export const RegisterView = {
   </div>
 
   <!-- 移动端购物车浮条 -->
-  <button class="cart-bar" ref="cartBar" v-if="hasItems" @click="cartOpen = !cartOpen"
-          :aria-expanded="cartOpen" aria-label="展开本单">
-    <span class="cart-bar-count mono">{{ pieces }}</span>
-    <span class="cart-bar-text">
-      <b class="mono">{{ money(total) }}</b>
-      <em>{{ lines }} 行商品</em>
-    </span>
-    <span class="cart-bar-cta">收款 <ui-icon name="chevronUp" :size="15" /></span>
-  </button>
+  <div class="cart-bar" ref="cartBar" v-if="!cartOpen">
+    <button class="cart-summary" @click="cartOpen = true" :disabled="!hasItems" aria-label="查看本单">
+      <span class="cart-bar-count mono">{{ pieces }}</span>
+      <span class="cart-bar-text"><b class="mono">{{ money(total) }}</b><em>{{ hasItems ? '查看本单 · ' + lines + ' 行商品' : '点商品开始选购' }}</em></span>
+      <ui-icon name="chevronUp" :size="15" v-if="hasItems" />
+    </button>
+    <button class="btn btn-primary cart-direct-pay" :disabled="!hasItems" @click="openPay">收款</button>
+  </div>
 
   <!-- 自选套餐：按子套餐中类现场选品 -->
   <ui-sheet v-if="comboPick" wide :title="comboPick.name"
