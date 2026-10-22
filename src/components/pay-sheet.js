@@ -21,6 +21,7 @@ export const UiPaySheet = {
       paid: moneyNum(this.total),
       adjustType: '',
       adjustReason: '',
+      paidAt: '',
       err: ''
     };
   },
@@ -31,6 +32,11 @@ export const UiPaySheet = {
     hasDiff() { return this.diff !== 0; },
     suggestions() { return roundingSuggestions(this.totalNum); },
     adjustTypes() { return ADJUST_TYPES; },
+    nowLocal() {
+      const d = new Date();
+      const p = n => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+    },
     channelList() {
       return [
         { key: 'wechat', label: CHANNEL_TXT.wechat, icon: 'wechat' },
@@ -57,12 +63,20 @@ export const UiPaySheet = {
         this.err = '实收与应收差 ' + (this.diff > 0 ? '+' : '') + this.diff + ' 元，请先选择差额原因';
         return;
       }
+      let paidAt = null;
+      if (this.paidAt) {
+        const t = new Date(this.paidAt);
+        if (isNaN(t.getTime())) { this.err = '收款时间格式不对'; return; }
+        if (t.getTime() > Date.now() + 60000) { this.err = '收款时间不能晚于当前时间'; return; }
+        paidAt = t.toISOString();
+      }
       this.err = '';
       this.$emit('submit', {
         channel: this.channel,
         paidAmount: r2(this.paidNum),
         adjustType: this.hasDiff ? this.adjustType : null,
-        adjustReason: this.hasDiff ? (this.adjustReason.trim() || ADJUST_HINT[this.adjustType] || null) : null
+        adjustReason: this.hasDiff ? (this.adjustReason.trim() || ADJUST_HINT[this.adjustType] || null) : null,
+        paidAt
       });
     }
   },
@@ -124,6 +138,12 @@ export const UiPaySheet = {
           <input class="input" style="margin-top:9px" placeholder="补充说明（选填）" v-model="adjustReason">
         </div>
       </transition>
+
+      <div class="field">
+        <span class="field-label">收款时间 <span class="xs muted">选填</span></span>
+        <input class="input input-mono" type="datetime-local" v-model="paidAt" :max="nowLocal" aria-label="收款时间">
+        <p class="field-hint">留空则按确认收款的时间记录；补录旧单可改成实际收款时间。</p>
+      </div>
 
       <div class="field-err" v-if="err">{{ err }}</div>
 
