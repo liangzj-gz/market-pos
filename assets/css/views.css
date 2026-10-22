@@ -189,6 +189,22 @@
 .combo-product-check .tag { flex: none; margin-left: auto; font-size: 10px; }
 .combo-group-hint { margin-top: 6px; }
 
+/* 套餐表单用标准抽屉宽度，整体收紧 */
+.combo-form .field { margin-bottom: 12px; }
+.combo-form .field > label { margin-bottom: 4px; }
+.combo-form .form-grid { gap: 0 10px; }
+.combo-form .combo-group { padding: 8px 10px; }
+.combo-form .combo-group-head { gap: 5px; }
+.combo-form .combo-group-head .select { min-width: 0; }
+.combo-form .combo-group-qty { width: 58px; }
+.combo-form .combo-group-body { margin-top: 6px; padding-top: 6px; }
+.combo-form .combo-group-tools .btn { min-height: 24px; padding: 2px 7px; }
+.combo-form .combo-product-scroll {
+  grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+  max-height: 150px; gap: 3px 6px;
+}
+.combo-form .combo-product-check { padding: 4px 6px; font-size: var(--fs-xs); }
+
 @media (max-width: 520px) {
   .combo-group { padding: 9px; }
   .combo-group-head .select { flex: 1 1 100%; }

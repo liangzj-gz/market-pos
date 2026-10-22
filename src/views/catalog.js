@@ -1098,7 +1098,8 @@ export const CatalogView = {
   </ui-sheet>
 
   <!-- 套餐表单 -->
-  <ui-sheet v-if="comboTarget" wide :title="comboTarget.id ? '编辑套餐' : '新增套餐'" @close="comboTarget = null">
+  <ui-sheet v-if="comboTarget" :title="comboTarget.id ? '编辑套餐' : '新增套餐'" @close="comboTarget = null">
+    <div class="combo-form">
     <div class="form-grid">
       <div class="field span-2">
         <label>套餐名称 *</label>
@@ -1166,6 +1167,7 @@ export const CatalogView = {
       </select>
     </div>
 
+    </div>
     <template #foot>
       <button class="btn" @click="comboTarget = null" :disabled="saving">取消</button>
       <button class="btn btn-primary grow" @click="saveCombo" :disabled="saving || !comboFormValid">
