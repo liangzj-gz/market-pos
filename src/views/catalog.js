@@ -45,7 +45,6 @@ export const CatalogView = {
       tag: 'all',
       activeRoot: null,
       activeMid: null,
-      condensed: false,
       prodForm: null,
       comboTarget: null,
       confirmDelete: null,
@@ -224,29 +223,41 @@ export const CatalogView = {
     }
   },
   watch: {
-    rootGroups() { this.$nextTick(this.refreshCatalogLayout); },
-    tab() { this.$nextTick(this.refreshCatalogLayout); }
+    rootGroups() { this._anchor = null; this.$nextTick(this.refreshCatalogLayout); },
+    tab() {
+      this._anchor = null;
+      this.$nextTick(() => { this.refreshCatalogLayout(); this.scrollHost().scrollTo({ top: 0, behavior: 'instant' }); });
+    },
+    activeRoot() { this.$nextTick(this.revealCategoryAnchor); },
+    activeMid() { this.$nextTick(this.revealCategoryAnchor); }
   },
   mounted() {
     this._onScroll = () => {
       if (this._scrollRaf) return;
       this._scrollRaf = requestAnimationFrame(() => {
         this._scrollRaf = null;
-        this.updateCondensed();
         this.refreshCatalogLayout();
       });
     };
     window.addEventListener('scroll', this._onScroll, { passive: true });
+    this.$el.addEventListener('scroll', this._onScroll, { passive: true });
+    this._cancelAnchor = () => { this._anchor = null; };
+    window.addEventListener('wheel', this._cancelAnchor, { passive: true });
+    window.addEventListener('touchstart', this._cancelAnchor, { passive: true });
+    window.addEventListener('keydown', this._cancelAnchor);
     window.addEventListener('resize', this._onScroll, { passive: true });
     this._layoutObserver = new ResizeObserver(() => this.refreshCatalogLayout());
     this._layoutObserver.observe(this.$refs.catalogToolbar);
     this.$nextTick(() => {
-      this.updateCondensed();
       this.refreshCatalogLayout();
     });
   },
   beforeUnmount() {
     window.removeEventListener('scroll', this._onScroll);
+    this.$el.removeEventListener('scroll', this._onScroll);
+    window.removeEventListener('wheel', this._cancelAnchor);
+    window.removeEventListener('touchstart', this._cancelAnchor);
+    window.removeEventListener('keydown', this._cancelAnchor);
     window.removeEventListener('resize', this._onScroll);
     this._layoutObserver.disconnect();
     if (this._scrollRaf) cancelAnimationFrame(this._scrollRaf);
@@ -275,54 +286,53 @@ export const CatalogView = {
     },
     rootDomId(group) { return 'cat-root-' + group.key; },
     midDomId(sub) { return 'cat-mid-' + sub.key; },
-    jumpToRoot(group) {
-      this.condensed = true;
-      this.activeRoot = group.key;
-      this.activeMid = null;
-      this.$nextTick(() => {
-        this.refreshCatalogLayout();
-        const el = document.getElementById(this.rootDomId(group));
-        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      });
+    scrollHost() { return window.matchMedia('(min-width: 900px)').matches ? this.$el : window; },
+    revealCategoryAnchor() {
+      const rail = this.$refs.categoryRail;
+      const selected = rail?.querySelector('[aria-current="location"]');
+      if (!selected) return;
+      const item = selected.getBoundingClientRect(), bounds = rail.getBoundingClientRect();
+      if (item.top < bounds.top || item.bottom > bounds.bottom) {
+        rail.scrollTo({ top: rail.scrollTop + item.top - bounds.top - (bounds.height - item.height) / 2, behavior: 'instant' });
+      }
     },
+    jumpToRoot(group) { this.jumpToMid(group, group.mids[0]); },
     jumpToMid(group, sub) {
-      this.condensed = true;
+      if (!sub) return;
+      this._anchor = { root: group.key, mid: sub.key, until: performance.now() + 1600 };
       this.activeRoot = group.key;
       this.activeMid = sub.key;
       this.$nextTick(() => {
         this.refreshCatalogLayout();
         const el = document.getElementById(this.midDomId(sub));
-        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (!el) return;
+        const host = this.scrollHost(), bar = this.$refs.catalogToolbar;
+        const bottom = (host === window ? 0 : host.getBoundingClientRect().top)
+          + (parseFloat(getComputedStyle(bar).top) || 0) + bar.getBoundingClientRect().height;
+        const y = (host === window ? window.scrollY : host.scrollTop) + el.getBoundingClientRect().top - bottom - 8;
+        if (!this._anchor) return;
+        this._anchor.y = y;
+        host.scrollTo({ top: y, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
       });
     },
-    // Measure the actual chrome, including wrapped controls and safe-area spacing.
     refreshCatalogLayout() {
-      const desktop = window.matchMedia('(min-width: 900px)').matches;
-      const topbar = document.querySelector('.topbar');
-      const base = desktop ? this.$refs.catalogToolbar.offsetHeight : (topbar?.offsetHeight || 0);
-      const rail = this.$refs.mobileCategories;
-      if (rail !== this._observedRail) {
-        if (this._observedRail) this._layoutObserver.unobserve(this._observedRail);
-        if (rail) this._layoutObserver.observe(rail);
-        this._observedRail = rail;
-      }
-      const railHeight = !desktop && rail ? rail.offsetHeight : 0;
-      this._categoryTop = base + railHeight;
-      this.$el.style.setProperty('--catalog-category-top', this._categoryTop + 'px');
-      this.$el.style.setProperty('--catalog-toolbar-bottom', base + 'px');
+      const bar = this.$refs.catalogToolbar;
+      const height = bar.getBoundingClientRect().height;
+      this._categoryTop = bar.getBoundingClientRect().bottom + 8;
+      this.$el.style.setProperty('--catalog-toolbar-height', height + 'px');
+      this.$el.style.setProperty('--catalog-pane-height', (this.scrollHost() === window ? window.innerHeight : this.$el.clientHeight) + 'px');
       this.updateActiveRoot();
-    },
-    updateCondensed() {
-      const y = window.scrollY;
-      if (!this.condensed && y > 24) this.condensed = true;
-      else if (this.condensed && y < 8) this.condensed = false;
     },
     updateActiveRoot() {
       if (this.tab !== 'products') return;
       const groups = this.rootGroups;
       if (!groups.length) { this.activeRoot = null; this.activeMid = null; return; }
+      const anchor = this._anchor;
+      const y = this.scrollHost() === window ? window.scrollY : this.$el.scrollTop;
+      if (anchor && performance.now() < anchor.until && (anchor.y === undefined || Math.abs(y - anchor.y) > 2)) return;
+      this._anchor = null;
       const rootThreshold = (this._categoryTop || 0) + 1;
-      const threshold = rootThreshold + 40;
+      const threshold = rootThreshold;
       let currentRoot = groups[0].key;
       let currentMid = groups[0].mids[0]?.key || null;
       for (const group of groups) {
@@ -713,7 +723,7 @@ export const CatalogView = {
   },
   template: `
 <div class="v-catalog">
-  <div ref="catalogToolbar" class="catalog-sticky" :class="{ 'is-condensed': condensed }">
+  <div ref="catalogToolbar" class="catalog-sticky">
   <div class="page-head row-between catalog-head">
     <div class="seg catalog-seg" role="tablist">
       <button class="seg-btn" :class="{ 'is-on': tab === 'products' }" role="tab" :aria-selected="tab === 'products'"
@@ -759,7 +769,7 @@ export const CatalogView = {
   <!-- 商品 -->
   <template v-if="tab === 'products'">
     <div class="catalog-layout" v-if="products.length">
-      <nav class="cat-rail" aria-label="商品分类">
+      <nav ref="categoryRail" class="cat-rail catalog-category-rail" aria-label="商品分类锚点">
         <div class="cat-rail-title">分类</div>
         <template v-for="g in rootGroups" :key="g.key">
           <button class="cat-rail-item cat-rail-root"
@@ -770,7 +780,7 @@ export const CatalogView = {
             <span class="cr-count mono">{{ g.total }}</span>
           </button>
           <button v-for="mg in g.mids" :key="mg.key" class="cat-rail-item cat-rail-mid"
-                  :class="{ 'is-active': activeMid === mg.key }" @click="jumpToMid(g, mg)">
+                  :class="{ 'is-active': activeMid === mg.key }" :aria-current="activeMid === mg.key ? 'location' : undefined" @click="jumpToMid(g, mg)">
             <span class="cr-subdot"></span>
             <span class="cr-name">{{ mg.name }}</span>
             <span class="cr-count mono">{{ mg.items.length }}</span>
@@ -779,34 +789,9 @@ export const CatalogView = {
       </nav>
 
       <div class="catalog-main">
-        <nav ref="mobileCategories" class="cat-rail-mobile" aria-label="商品分类">
-          <div class="cat-rail-mobile-row">
-            <button v-for="g in rootGroups" :key="g.key" class="chip chip-brand"
-                    :class="{ 'is-on': activeRoot === g.key }" @click="jumpToRoot(g)">
-              {{ g.name }}<span class="chip-count">{{ g.total }}</span>
-            </button>
-          </div>
-          <div class="cat-rail-mobile-row crm-mids" v-if="activeRootMids.length">
-            <button v-for="mg in activeRootMids" :key="mg.key" class="crm-mid"
-                    :class="{ 'is-on': activeMid === mg.key }" @click="jumpToMid(activeRootGroup, mg)">
-              {{ mg.name }}<span>{{ mg.items.length }}</span>
-            </button>
-          </div>
-        </nav>
-
         <section v-for="g in rootGroups" :key="g.key" :id="rootDomId(g)" class="root-section">
-          <div class="root-head catalog-root-head" aria-label="商品大类">
-            <span class="root-bar"></span>
-            <span class="root-name" :title="g.name">{{ g.name }}</span>
-            <span class="root-count mono">{{ g.total }}</span>
-          </div>
           <div class="prod-group" v-for="mg in g.mids" :key="mg.key" :id="midDomId(mg)">
-            <div class="pg-head catalog-mid-head" aria-label="商品中类">
-              <span class="pg-dot"></span>
-              <span class="pg-name" :title="mg.name">{{ mg.name }}</span>
-              <span class="pg-count mono">{{ mg.items.length }}</span>
-              <span class="pg-rule"></span>
-            </div>
+            <h3 class="catalog-group-label"><span>{{ g.name }}</span><span class="muted">/</span><b>{{ mg.name }}</b><em>{{ mg.items.length }}</em></h3>
             <div class="prod-grid">
               <article class="prod-cell" v-for="p in mg.items" :key="p.id" :class="{ 'is-off': p.status === 'off_sale' }">
                 <button class="pc-open" @click="openEdit(p)" :aria-label="'编辑商品 ' + p.name">
