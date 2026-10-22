@@ -811,7 +811,6 @@
   position: sticky;
   margin: 0;
   background: var(--bg);
-  border-bottom: 1px solid var(--stroke);
   box-sizing: border-box;
 }
 .catalog-root-head {
