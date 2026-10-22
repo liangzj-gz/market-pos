@@ -120,10 +120,10 @@ const App = {
     <div class="side-brand">
       <div class="brand">
         <span class="brand-mark"><ui-icon name="orders" :size="16" /></span>
-        <span>摆摊订单管家</span>
+        <span class="side-brand-name">摆摊订单管家</span>
       </div>
-      <div class="brand-sub" style="margin-top:3px;margin-left:37px">市集收银台</div>
-      <div class="badge-demo" :class="{ 'badge-bad': syncBad }" style="margin:10px 0 0 37px">
+      <div class="brand-sub">市集收银台</div>
+      <div class="badge-demo" :class="{ 'badge-bad': syncBad }">
         <ui-icon name="cloud" :size="12" /> {{ syncLabel }}
       </div>
     </div>

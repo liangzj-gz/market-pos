@@ -448,23 +448,29 @@
   border-right: 1px solid var(--stroke);
   padding: 18px 12px calc(18px + env(safe-area-inset-bottom));
 }
-.side-brand { padding: 0 8px 16px; border-bottom: 1px solid var(--stroke); margin-bottom: 14px; }
+.side-brand { padding: 0 2px 12px; border-bottom: 1px solid var(--stroke); margin-bottom: 12px; text-align: center; }
 .side-nav { display: flex; flex-direction: column; gap: 1px; overflow-y: auto; flex: 1; }
 .side-link {
-  display: flex; align-items: center; gap: 11px;
-  padding: 9px 11px; border-radius: var(--r-sm);
-  color: var(--label-2); font-size: var(--fs-md); font-weight: 500;
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px; border-radius: var(--r-sm);
+  color: var(--label-2); font-size: 13px; font-weight: 500;
   transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
   text-align: left; width: 100%;
 }
-.side-link svg { width: 19px; height: 19px; flex: none; color: var(--label-3); transition: color var(--dur) var(--ease); }
+.side-link svg { width: 18px; height: 18px; flex: none; color: var(--label-3); transition: color var(--dur) var(--ease); }
 .side-link:hover { background: var(--fill); color: var(--label); }
 .side-link[aria-current="page"] {
   background: var(--blue-soft); color: var(--blue); font-weight: 600;
 }
 .side-link[aria-current="page"] svg { color: var(--blue); }
-.side-link .count-badge { margin-left: auto; }
-.side-foot { padding-top: 12px; border-top: 1px solid var(--stroke); margin-top: 10px; }
+.side-link .count-badge { margin-left: auto; height: 16px; min-width: 16px; padding: 0 4px; font-size: 10px; }
+.side-foot { padding-top: 10px; border-top: 1px solid var(--stroke); margin-top: 10px; text-align: center; }
+.sidebar .brand { flex-direction: column; justify-content: center; gap: 5px; font-size: 12px; letter-spacing: -.01em; }
+.sidebar .brand-mark { width: 28px; height: 28px; border-radius: 8px; }
+.sidebar .side-brand-name { font-size: 12px; font-weight: 650; white-space: nowrap; }
+.sidebar .brand-sub { margin-top: 2px; font-size: 10.5px; }
+.sidebar .badge-demo { margin: 8px auto 0; padding: 2px 7px; font-size: 10.5px; }
+.sidebar .side-foot .xs { font-size: 10.5px; }
 
 @media (min-width: 900px) {
   .sidebar { display: flex; }

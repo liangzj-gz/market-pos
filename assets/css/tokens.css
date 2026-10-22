@@ -90,8 +90,8 @@
   --topbar-h: 56px;
   --tabbar-h: 64px;
   --tap: 44px;
-  --sidebar-w: 236px;
-  --content-max: 1120px;
+  --sidebar-w: 120px;
+  --content-max: 1240px;
 
   /* --- 动效 --- */
   --ease: cubic-bezier(.32, .72, 0, 1);
