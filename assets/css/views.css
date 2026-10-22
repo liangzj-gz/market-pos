@@ -807,18 +807,8 @@
 }
 @media (min-width: 900px) {
   .cat-rail { top: 52px; max-height: calc(100vh - 76px); }
-  .root-head {
-    position: sticky; top: 42px; z-index: 23;
-    background: var(--bg);
-    box-shadow: 0 3px 0 var(--bg);
-  }
-  .pg-head {
-    position: sticky; top: 68px; z-index: 22;
-    background: var(--bg);
-    box-shadow: 0 10px 0 var(--bg);
-  }
-  .root-section { scroll-margin-top: 42px; }
-  .root-section .prod-group { scroll-margin-top: 68px; }
+  .root-section { scroll-margin-top: 52px; }
+  .root-section .prod-group { scroll-margin-top: 52px; }
 }
 
 @media (max-width: 520px) {
