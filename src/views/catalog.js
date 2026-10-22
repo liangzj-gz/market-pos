@@ -224,8 +224,8 @@ export const CatalogView = {
     }
   },
   watch: {
-    rootGroups() { this.$nextTick(this.updateActiveRoot); },
-    tab() { this.$nextTick(this.updateActiveRoot); }
+    rootGroups() { this.$nextTick(this.refreshCatalogLayout); },
+    tab() { this.$nextTick(this.refreshCatalogLayout); }
   },
   mounted() {
     this._onScroll = () => {
@@ -233,17 +233,22 @@ export const CatalogView = {
       this._scrollRaf = requestAnimationFrame(() => {
         this._scrollRaf = null;
         this.updateCondensed();
-        this.updateActiveRoot();
+        this.refreshCatalogLayout();
       });
     };
     window.addEventListener('scroll', this._onScroll, { passive: true });
+    window.addEventListener('resize', this._onScroll, { passive: true });
+    this._layoutObserver = new ResizeObserver(() => this.refreshCatalogLayout());
+    this._layoutObserver.observe(this.$refs.catalogToolbar);
     this.$nextTick(() => {
       this.updateCondensed();
-      this.updateActiveRoot();
+      this.refreshCatalogLayout();
     });
   },
   beforeUnmount() {
     window.removeEventListener('scroll', this._onScroll);
+    window.removeEventListener('resize', this._onScroll);
+    this._layoutObserver.disconnect();
     if (this._scrollRaf) cancelAnimationFrame(this._scrollRaf);
   },
   methods: {
@@ -275,6 +280,7 @@ export const CatalogView = {
       this.activeRoot = group.key;
       this.activeMid = null;
       this.$nextTick(() => {
+        this.refreshCatalogLayout();
         const el = document.getElementById(this.rootDomId(group));
         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
@@ -284,9 +290,27 @@ export const CatalogView = {
       this.activeRoot = group.key;
       this.activeMid = sub.key;
       this.$nextTick(() => {
+        this.refreshCatalogLayout();
         const el = document.getElementById(this.midDomId(sub));
         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
+    },
+    // Measure the actual chrome, including wrapped controls and safe-area spacing.
+    refreshCatalogLayout() {
+      const desktop = window.matchMedia('(min-width: 900px)').matches;
+      const topbar = document.querySelector('.topbar');
+      const base = desktop ? this.$refs.catalogToolbar.offsetHeight : (topbar?.offsetHeight || 0);
+      const rail = this.$refs.mobileCategories;
+      if (rail !== this._observedRail) {
+        if (this._observedRail) this._layoutObserver.unobserve(this._observedRail);
+        if (rail) this._layoutObserver.observe(rail);
+        this._observedRail = rail;
+      }
+      const railHeight = !desktop && rail ? rail.offsetHeight : 0;
+      this._categoryTop = base + railHeight;
+      this.$el.style.setProperty('--catalog-category-top', this._categoryTop + 'px');
+      this.$el.style.setProperty('--catalog-toolbar-bottom', base + 'px');
+      this.updateActiveRoot();
     },
     updateCondensed() {
       const y = window.scrollY;
@@ -297,27 +321,23 @@ export const CatalogView = {
       if (this.tab !== 'products') return;
       const groups = this.rootGroups;
       if (!groups.length) { this.activeRoot = null; this.activeMid = null; return; }
-      const desktop = window.matchMedia('(min-width: 900px)').matches;
-      const rootThreshold = desktop ? 56 : 140;
-      const midThreshold = desktop ? 56 : 140;
+      const rootThreshold = (this._categoryTop || 0) + 1;
+      const threshold = rootThreshold + 40;
       let currentRoot = groups[0].key;
-      let currentMid = null;
+      let currentMid = groups[0].mids[0]?.key || null;
       for (const group of groups) {
         const rootEl = document.getElementById(this.rootDomId(group));
-        if (rootEl && rootEl.getBoundingClientRect().top <= rootThreshold) currentRoot = group.key;
+        if (rootEl && rootEl.getBoundingClientRect().top <= rootThreshold) {
+          currentRoot = group.key;
+          currentMid = group.mids[0]?.key || null;
+        }
         for (const sub of group.mids) {
           const midEl = document.getElementById(this.midDomId(sub));
-          if (midEl && midEl.getBoundingClientRect().top <= midThreshold) {
+          if (midEl && midEl.getBoundingClientRect().top <= threshold) {
             currentRoot = group.key;
             currentMid = sub.key;
           }
         }
-      }
-      const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
-      if (maxScroll - window.scrollY <= 80) {
-        const last = groups[groups.length - 1];
-        currentRoot = last.key;
-        currentMid = last.mids.length ? last.mids[last.mids.length - 1].key : null;
       }
       if (this.activeRoot !== currentRoot) this.activeRoot = currentRoot;
       if (this.activeMid !== currentMid) this.activeMid = currentMid;
@@ -693,7 +713,7 @@ export const CatalogView = {
   },
   template: `
 <div class="v-catalog">
-  <div class="catalog-sticky" :class="{ 'is-condensed': condensed }">
+  <div ref="catalogToolbar" class="catalog-sticky" :class="{ 'is-condensed': condensed }">
   <div class="page-head row-between catalog-head">
     <div class="seg catalog-seg" role="tablist">
       <button class="seg-btn" :class="{ 'is-on': tab === 'products' }" role="tab" :aria-selected="tab === 'products'"
@@ -759,7 +779,7 @@ export const CatalogView = {
       </nav>
 
       <div class="catalog-main">
-        <nav class="cat-rail-mobile" aria-label="商品分类">
+        <nav ref="mobileCategories" class="cat-rail-mobile" aria-label="商品分类">
           <div class="cat-rail-mobile-row">
             <button v-for="g in rootGroups" :key="g.key" class="chip chip-brand"
                     :class="{ 'is-on': activeRoot === g.key }" @click="jumpToRoot(g)">
@@ -775,15 +795,15 @@ export const CatalogView = {
         </nav>
 
         <section v-for="g in rootGroups" :key="g.key" :id="rootDomId(g)" class="root-section">
-          <div class="root-head">
+          <div class="root-head catalog-root-head" aria-label="商品大类">
             <span class="root-bar"></span>
-            <span class="root-name">{{ g.name }}</span>
+            <span class="root-name" :title="g.name">{{ g.name }}</span>
             <span class="root-count mono">{{ g.total }}</span>
           </div>
           <div class="prod-group" v-for="mg in g.mids" :key="mg.key" :id="midDomId(mg)">
-            <div class="pg-head">
+            <div class="pg-head catalog-mid-head" aria-label="商品中类">
               <span class="pg-dot"></span>
-              <span class="pg-name">{{ mg.name }}</span>
+              <span class="pg-name" :title="mg.name">{{ mg.name }}</span>
               <span class="pg-count mono">{{ mg.items.length }}</span>
               <span class="pg-rule"></span>
             </div>
