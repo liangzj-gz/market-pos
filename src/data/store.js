@@ -15,6 +15,7 @@ import {
   createOrder, confirmOrder, cancelOrder, stockIn, setStock,
   upsertProduct, toggleProductStatus, upsertCombo, deleteCombo,
   resolveAlert, buildStats, syncAlerts, expandCombo, computeTotal,
+  deriveComboGroups, comboPartsOfOrderItem, comboSelectionsFromItems,
   buildCategoryTree, collapseCategoryDepth, categoryById, categoryPath, categoryLabel, categoryLevel,
   childrenOf, categoryProductCount, upsertCategory,
   deleteCategory as deleteCategoryRule,
@@ -63,11 +64,13 @@ export function buildSeedDb() {
   db.tags = Array.from(new Set(db.products.flatMap(p => p.tags || [])));
 
   SEED_COMBOS.forEach(([name, combo_price, original_price, items]) => {
-    db.combos.push({
+    const combo = {
       id: db.seq.combo++, combo_code: 'C' + String(db.combos.length + 1).padStart(2, '0'),
       name, combo_price, original_price, status: 'on_sale',
       items: items.map(([pname, quantity]) => ({ product_id: idByName[pname], quantity }))
-    });
+    };
+    combo.groups = deriveComboGroups(db, combo.items);
+    db.combos.push(combo);
   });
 
   /* 期初建账：一次入库，把库存余额从「未盘点」变成有账可查 */
@@ -87,7 +90,10 @@ export function buildSeedDb() {
       if (String(ref).startsWith('#')) {
         const name = String(ref).slice(1);
         const c = db.combos.find(x => x.name === name);
-        return { item_type: 'combo', combo_id: c.id, product_name: name, quantity, unit_price, is_gift: false };
+        return {
+          item_type: 'combo', combo_id: c.id, product_name: name, quantity, unit_price, is_gift: false,
+          selections: comboSelectionsFromItems(db, c.items || [])
+        };
       }
       return {
         item_type: 'product', product_id: idByName[ref], product_name: ref,
@@ -135,6 +141,12 @@ function migrate(db) {
   });
   buildCategoryTree(db);
   collapseCategoryDepth(db);
+  db.combos.forEach(c => {
+    if (!Array.isArray(c.items)) c.items = [];
+    if (!Array.isArray(c.groups)) c.groups = [];
+    /* 旧套餐按固定商品所属中类派生出自选子套餐；items 继续留给历史订单 */
+    if (!c.groups.length) c.groups = deriveComboGroups(db, c.items);
+  });
   db.tags = Array.from(new Set([...db.tags, ...db.products.flatMap(p => p.tags || [])]));
   return db;
 }
@@ -470,7 +482,7 @@ export const frequentIds = computed(() => {
     if (o.status !== 'paid' || !o.paid_at || o.paid_at < since) return;
     itemsOfOrder(store.db, o.id).forEach(it => {
       if (it.item_type === 'product') count[it.product_id] = (count[it.product_id] || 0) + int(it.quantity);
-      else expandCombo(store.db, it.combo_id, it.quantity).forEach(x => { count[x.product_id] = (count[x.product_id] || 0) + x.quantity; });
+      else comboPartsOfOrderItem(store.db, it).forEach(x => { count[x.product_id] = (count[x.product_id] || 0) + x.quantity; });
     });
   });
   return Object.entries(count).sort((a, b) => b[1] - a[1]).map(x => Number(x[0]));
@@ -572,9 +584,11 @@ export function orderDetail(id) {
   const items = itemsOfOrder(store.db, id).map(it => {
     if (it.item_type === 'combo') {
       const c = comboById(store.db, it.combo_id);
-      return { ...it, combo: c, parts: (c ? c.items : []).map(ci => ({
-        product: productById(store.db, ci.product_id), quantity: int(ci.quantity) * int(it.quantity)
-      })) };
+      const parts = comboPartsOfOrderItem(store.db, it).map(part => ({
+        product: productById(store.db, part.product_id),
+        quantity: part.quantity
+      }));
+      return { ...it, combo: c, parts };
     }
     return { ...it, product: productById(store.db, it.product_id) };
   });

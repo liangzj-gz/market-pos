@@ -2,9 +2,10 @@
 
 import { store } from '../data/store.js';
 import { num, r2, int } from '../util/format.js';
-import { expandCombo } from '../domain/rules.js';
+import { comboPartsOfLine } from '../domain/rules.js';
 
 const cart = () => store.ui.cart;
+let comboPickSeq = 0;
 
 export function addProduct(p, qty = 1) {
   const key = 'p' + p.id;
@@ -18,6 +19,22 @@ export function addCombo(c, qty = 1) {
   const line = cart().find(l => l.key === key);
   if (line) line.qty += qty;
   else cart().push({ key, type: 'combo', id: c.id, name: c.name, price: num(c.combo_price), qty, gift: false, series: '套餐' });
+}
+
+/* 自选套餐：每次配置单独一行，selections 是「一份套餐」的选品 */
+export function addComboSelection(c, selections, qty = 1) {
+  const key = 'c' + c.id + '-' + Date.now().toString(36) + '-' + (++comboPickSeq);
+  const snapshot = (selections || []).map(group => ({
+    category_id: group.category_id,
+    items: (group.items || []).map(item => ({
+      product_id: item.product_id,
+      quantity: int(item.quantity)
+    }))
+  }));
+  cart().push({
+    key, type: 'combo', id: c.id, name: c.name, price: num(c.combo_price),
+    qty, gift: false, series: '套餐', selections: snapshot
+  });
 }
 
 export function incLine(l) { l.qty++; }
@@ -46,7 +63,7 @@ export function cartTotal() {
 export function cartPieces() {
   return cart().reduce((t, l) => {
     if (l.type === 'combo') {
-      const parts = expandCombo(store.db, l.id, l.qty);
+      const parts = comboPartsOfLine(store.db, l);
       return t + (parts.length ? parts.reduce((s, x) => s + x.quantity, 0) : int(l.qty));
     }
     return t + int(l.qty);
@@ -55,7 +72,7 @@ export function cartPieces() {
 /* 转成规则引擎要的订单行 */
 export function cartToOrderLines() {
   return cart().map(l => l.type === 'combo'
-    ? { item_type: 'combo', combo_id: l.id, product_name: l.name, quantity: int(l.qty), unit_price: r2(num(l.price)), is_gift: false }
+    ? { item_type: 'combo', combo_id: l.id, product_name: l.name, quantity: int(l.qty), unit_price: r2(num(l.price)), is_gift: false, selections: l.selections || null }
     : { item_type: 'product', product_id: l.id, product_name: l.name, quantity: int(l.qty), unit_price: r2(num(l.price)), is_gift: !!l.gift });
 }
 
@@ -64,7 +81,7 @@ export function cartDemandByProduct() {
   const map = {};
   cart().forEach(l => {
     const parts = l.type === 'combo'
-      ? expandCombo(store.db, l.id, l.qty)
+      ? comboPartsOfLine(store.db, l)
       : [{ product_id: l.id, quantity: int(l.qty) }];
     parts.forEach(p => { map[p.product_id] = (map[p.product_id] || 0) + p.quantity; });
   });

@@ -5,18 +5,22 @@ import {
 } from '../data/store.js';
 import { money, moneyNum, num, r2, int } from '../util/format.js';
 import {
-  addProduct, addCombo, incLine, decLine, removeLine, setLineQty, setLinePrice,
+  addProduct, addCombo, addComboSelection, incLine, decLine, removeLine, setLineQty, setLinePrice,
   toggleGift, clearCart, cartTotal, cartPieces, cartToOrderLines, cartDemandByProduct
 } from '../domain/cart.js';
-import { expandCombo } from '../domain/rules.js';
+import { comboHasGroups, categoryPath } from '../domain/rules.js';
+import { UiSheet } from '../components/index.js';
 import { UiPaySheet } from '../components/pay-sheet.js';
 import { UiReceipt } from '../components/receipt.js';
 
 export const RegisterView = {
   name: 'RegisterView',
-  components: { UiPaySheet, UiReceipt },
+  components: { UiSheet, UiPaySheet, UiReceipt },
   data() {
-    return { paying: false, submitting: false, receipt: null, confirmClear: false };
+    return {
+      paying: false, submitting: false, receipt: null, confirmClear: false,
+      comboPick: null, pickGroups: []
+    };
   },
   computed: {
     store() { return store; },
@@ -59,12 +63,66 @@ export const RegisterView = {
       get() { return store.ui.cartOpen; },
       set(v) { store.ui.cartOpen = v; }
     },
-    emptyCatalog() { return store.db.products.length === 0; }
+    emptyCatalog() { return store.db.products.length === 0; },
+    comboPickReady() {
+      return !!(this.comboPick && this.pickGroups.length
+        && this.pickGroups.every(group => this.pickGroupCount(group) === group.required));
+    }
   },
   methods: {
     money, moneyNum, num, r2, int,
     addProduct(p) { addProduct(p); this.bump(); },
-    addCombo(c) { addCombo(c); this.bump(); },
+    addCombo(c) {
+      if (comboHasGroups(c)) { this.openComboPicker(c); return; }
+      addCombo(c); this.bump();
+    },
+    openComboPicker(c) {
+      this.comboPick = c;
+      this.pickGroups = (c.groups || []).map(g => {
+        const cat = store.db.categories.find(x => x.id === g.category_id);
+        return {
+          category_id: g.category_id,
+          name: cat ? cat.name : '未分类',
+          required: int(g.quantity),
+          items: []
+        };
+      });
+    },
+    closeComboPicker() { this.comboPick = null; this.pickGroups = []; },
+    comboIsPickable(c) { return comboHasGroups(c); },
+    pickerProducts(group) {
+      return productsOnSale.value.filter(p =>
+        categoryPath(store.db, p.category_id).some(c => c.id === group.category_id)
+      );
+    },
+    pickQty(group, product) {
+      const item = group.items.find(x => x.product_id === product.id);
+      return item ? item.quantity : 0;
+    },
+    pickGroupCount(group) {
+      return group.items.reduce((t, x) => t + int(x.quantity), 0);
+    },
+    incPick(group, product) {
+      if (this.pickGroupCount(group) >= group.required) {
+        toast('「' + group.name + '」已经选够了', 'warn');
+        return;
+      }
+      const item = group.items.find(x => x.product_id === product.id);
+      if (item) item.quantity += 1;
+      else group.items.push({ product_id: product.id, quantity: 1 });
+    },
+    clearPickGroup(group) { group.items = []; },
+    pickAdd() {
+      if (!this.comboPickReady) { toast('还有子套餐没选够件数', 'warn'); return; }
+      const selections = this.pickGroups.map(group => ({
+        category_id: group.category_id,
+        items: group.items.map(item => ({ product_id: item.product_id, quantity: item.quantity }))
+      }));
+      addComboSelection(this.comboPick, selections);
+      this.closeComboPicker();
+      this.bump();
+      toast('已加入本单', 'ok');
+    },
     incLine, decLine, removeLine, toggleGift,
     onQty(l, e) { setLineQty(l, e.target.value); },
     onPrice(l, e) { setLinePrice(l, e.target.value); },
@@ -81,17 +139,46 @@ export const RegisterView = {
       return l ? l.qty : 0;
     },
     comboInCart(c) {
-      const l = this.cart.find(x => x.key === 'c' + c.id);
-      return l ? l.qty : 0;
+      return this.cart.filter(x => x.type === 'combo' && x.id === c.id)
+        .reduce((t, x) => t + int(x.qty), 0);
     },
     comboPieces(c) {
+      if (comboHasGroups(c)) return c.groups.reduce((t, g) => t + int(g.quantity), 0);
       return (c.items || []).reduce((t, it) => t + int(it.quantity), 0);
     },
     comboNames(c) {
+      if (comboHasGroups(c)) {
+        return c.groups.map(g => {
+          const cat = store.db.categories.find(x => x.id === g.category_id);
+          return (cat ? cat.name : '?') + '×' + int(g.quantity);
+        }).join(' + ');
+      }
       return (c.items || []).map(it => {
         const p = productById(store.db, it.product_id);
         return (p ? p.name : '?') + '×' + int(it.quantity);
       }).join(' + ');
+    },
+    comboSelectionText(l) {
+      if (!l.selections || !l.selections.length) {
+        const c = comboById(store.db, l.id);
+        return c ? this.comboNames(c) : '按套餐明细扣库存';
+      }
+      return l.selections.map(g => {
+        const cat = store.db.categories.find(c => c.id === g.category_id);
+        const names = g.items.map(it => {
+          const p = productById(store.db, it.product_id);
+          return (p ? p.name : '?') + (int(it.quantity) > 1 ? '×' + int(it.quantity) : '');
+        }).join('、');
+        return (cat ? cat.name : '未分类') + '：' + names;
+      }).join(' · ');
+    },
+    comboSelectionPieces(l) {
+      if (!l.selections || !l.selections.length) {
+        const c = comboById(store.db, l.id);
+        return (c ? this.comboPieces(c) : 0) * int(l.qty);
+      }
+      return l.selections.reduce((t, g) =>
+        t + (g.items || []).reduce((s, it) => s + int(it.quantity), 0), 0) * int(l.qty);
     },
     bump() {
       /* 轻微反馈：加了货就让购物车条呼吸一下 */
@@ -171,11 +258,11 @@ export const RegisterView = {
       </div>
 
       <div class="card" v-if="combos.length">
-        <div class="card-head"><h3><ui-icon name="layers" :size="16" /> 套餐</h3><span class="hint">点一下整套入单</span></div>
+        <div class="card-head"><h3><ui-icon name="layers" :size="16" /> 套餐</h3><span class="hint">点一下选品入单</span></div>
         <div class="card-body combo-list">
           <button v-for="c in combos" :key="c.id" class="combo-cell" :class="{ 'has-qty': comboInCart(c) }" @click="addCombo(c)">
             <span class="combo-badge" v-if="comboInCart(c)">{{ comboInCart(c) }}</span>
-            <span class="combo-name">{{ c.name }}</span>
+            <span class="combo-name">{{ c.name }}<i v-if="comboIsPickable(c)" class="tag tag-brand combo-self">自选</i></span>
             <span class="combo-parts">{{ comboNames(c) }}</span>
             <span class="combo-price">
               <b class="mono">{{ money(c.combo_price) }}</b>
@@ -233,13 +320,14 @@ export const RegisterView = {
               </span>
               <button class="cl-del" @click="removeLine(l)" aria-label="删除该行"><ui-icon name="close" :size="14" /></button>
             </div>
+            <div class="cl-combo-parts xs muted" v-if="l.type === 'combo'">{{ comboSelectionText(l) }}</div>
             <div class="cl-bottom">
               <label class="gift-check" v-if="l.type === 'product'">
                 <input type="checkbox" :checked="l.gift" @change="toggleGift(l)">
                 <span class="switch-track" aria-hidden="true"></span>
                 <span class="xs">送出去</span>
               </label>
-              <span v-else class="xs muted">按明细扣库存</span>
+              <span v-else class="xs muted">共 {{ comboSelectionPieces(l) }} 件</span>
               <div class="cl-right">
                 <span class="cl-price">
                   <i>¥</i><input class="input input-mono cl-price-input" type="number" inputmode="decimal" step="0.01" min="0"
@@ -292,6 +380,41 @@ export const RegisterView = {
     </span>
     <span class="cart-bar-cta">收款 <ui-icon name="chevronUp" :size="15" /></span>
   </button>
+
+  <!-- 自选套餐：按子套餐中类现场选品 -->
+  <ui-sheet v-if="comboPick" wide :title="comboPick.name"
+            :subtitle="money(comboPick.combo_price) + ' · 共选 ' + comboPieces(comboPick) + ' 件'"
+            @close="closeComboPicker">
+    <div class="cp-intro">从每个中类里选够对应件数，再点击加入本单。同一商品可以选多件。</div>
+    <section class="cp-group" v-for="group in pickGroups" :key="group.category_id">
+      <header class="cp-head">
+        <div class="grow">
+          <b>{{ group.name }}</b>
+          <span class="xs muted">需选 {{ group.required }} 件</span>
+        </div>
+        <span class="cp-count" :class="{ 'is-ok': pickGroupCount(group) === group.required }">
+          {{ pickGroupCount(group) }} / {{ group.required }}
+        </span>
+        <button v-if="group.items.length" class="btn btn-sm btn-quiet" @click="clearPickGroup(group)">清空</button>
+      </header>
+      <div class="cp-products" v-if="pickerProducts(group).length">
+        <button v-for="p in pickerProducts(group)" :key="p.id" class="cp-product"
+                :class="{ 'has-qty': pickQty(group, p) > 0 }"
+                @click="incPick(group, p)" :aria-label="'选择 ' + p.name">
+          <span class="cp-name">{{ p.name }}</span>
+          <span class="cp-meta xs muted">{{ stockLeft(p).text }}</span>
+          <span class="cp-badge mono" v-if="pickQty(group, p)">{{ pickQty(group, p) }}</span>
+        </button>
+      </div>
+      <div class="empty-inline" v-else>这个中类暂时没有在售商品</div>
+    </section>
+    <template #foot>
+      <button class="btn" @click="closeComboPicker">取消</button>
+      <button class="btn btn-primary grow" :disabled="!comboPickReady" @click="pickAdd">
+        加入本单 {{ money(comboPick.combo_price) }}
+      </button>
+    </template>
+  </ui-sheet>
 
   <ui-pay-sheet v-if="paying" :total="total" :pieces="pieces" :submitting="submitting"
                 title="收款" @close="paying = false" @submit="onPaySubmit" />

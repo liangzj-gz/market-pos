@@ -73,17 +73,84 @@ export const movementsOf = (db, productId, limit) => {
 export const openAlertsOf = (db, productId) =>
   db.alerts.filter(a => a.product_id === productId && a.status === 'open');
 
-/* R8：把套餐展开成 {product_id, quantity} 列表 */
+/* R8：把套餐展开成 {product_id, quantity} 列表（旧套餐固定明细） */
 export function expandCombo(db, comboId, qty) {
   const c = comboById(db, comboId);
   if (!c) return [];
   return (c.items || []).map(it => ({ product_id: it.product_id, quantity: int(it.quantity) * int(qty) }));
 }
 
-/* 一条订单行占用的商品件数（套餐按明细展开） */
+export const comboHasGroups = c => !!(c && Array.isArray(c.groups) && c.groups.length);
+
+/* 从旧套餐的固定商品明细里按中类归并出子套餐 */
+export function deriveComboGroups(db, items) {
+  const map = new Map();
+  (items || []).forEach(it => {
+    const p = productById(db, it.product_id);
+    if (!p || !p.category_id) return;
+    const path = categoryPath(db, p.category_id);
+    const mid = path[1] || null;
+    if (!mid) return;
+    map.set(mid.id, (map.get(mid.id) || 0) + int(it.quantity));
+  });
+  return Array.from(map, ([category_id, quantity]) => ({ category_id, quantity }));
+}
+
+/* 旧套餐的固定明细 → 选品快照（历史订单导入/迁移用） */
+export function comboSelectionsFromItems(db, items) {
+  const map = new Map();
+  (items || []).forEach(it => {
+    const p = productById(db, it.product_id);
+    if (!p || !p.category_id) return;
+    const path = categoryPath(db, p.category_id);
+    const mid = path[1] || null;
+    if (!mid) return;
+    let group = map.get(mid.id);
+    if (!group) {
+      group = { category_id: mid.id, items: [] };
+      map.set(mid.id, group);
+    }
+    group.items.push({ product_id: it.product_id, quantity: int(it.quantity) });
+  });
+  return Array.from(map.values());
+}
+
+/* 子套餐选品 → 商品明细；selections 是「一份套餐」的选品 */
+export function expandComboSelections(selections, qty = 1) {
+  const out = [];
+  (selections || []).forEach(group => {
+    (group.items || []).forEach(item => {
+      const product_id = Number(item.product_id);
+      const quantity = int(item.quantity) * int(qty);
+      if (product_id && quantity) out.push({ product_id, quantity });
+    });
+  });
+  return out;
+}
+
+/* 订单行：优先用选品快照，旧订单继续用套餐固定明细 */
+export function comboPartsOfLine(db, line) {
+  if (!line) return [];
+  const selections = line.selections || line.combo_selections;
+  if (Array.isArray(selections) && selections.length) {
+    return expandComboSelections(selections, line.quantity);
+  }
+  return expandCombo(db, line.combo_id, line.quantity);
+}
+
+export function comboPartsOfOrderItem(db, item) {
+  if (!item) return [];
+  const selections = item.combo_selections || item.selections;
+  if (Array.isArray(selections) && selections.length) {
+    return expandComboSelections(selections, item.quantity);
+  }
+  return expandCombo(db, item.combo_id, item.quantity);
+}
+
+/* 一条订单行占用的商品件数（套餐按选品/明细展开） */
 export function linePieces(db, line) {
   if (line.item_type === 'combo') {
-    return expandCombo(db, line.combo_id, line.quantity).reduce((t, x) => t + x.quantity, 0);
+    return comboPartsOfLine(db, line).reduce((t, x) => t + x.quantity, 0);
   }
   return int(line.quantity);
 }
@@ -195,7 +262,43 @@ function validateLines(db, lines) {
       const c = comboById(db, l.combo_id);
       if (!c) fail('COMBO_NOT_FOUND', '套餐不存在或已停售');
       if (c.status !== 'on_sale') fail('COMBO_NOT_FOUND', '套餐「' + c.name + '」已停售');
-      if (!(c.items || []).length) fail('COMBO_ITEMS_MISSING', '套餐「' + c.name + '」缺少明细，无法扣减库存');
+      if (comboHasGroups(c)) {
+        const selections = Array.isArray(l.selections) ? l.selections : [];
+        const byCategory = new Map();
+        selections.forEach(sel => {
+          const categoryId = Number(sel.category_id);
+          const group = c.groups.find(g => Number(g.category_id) === categoryId);
+          if (!group) fail('COMBO_GROUP_MISMATCH', '套餐「' + c.name + '」的选品与子套餐不匹配');
+          if (byCategory.has(categoryId)) fail('COMBO_GROUP_DUP', '套餐「' + c.name + '」的同一子套餐不能重复选品');
+          byCategory.set(categoryId, sel);
+        });
+        c.groups.forEach(group => {
+          const categoryId = Number(group.category_id);
+          const category = categoryById(db, categoryId);
+          const categoryName = category ? category.name : ('中类#' + categoryId);
+          const required = int(group.quantity);
+          const sel = byCategory.get(categoryId);
+          if (!sel) fail('COMBO_SELECTION_MISSING', '套餐「' + c.name + '」需要从「' + categoryName + '」选 ' + required + ' 件');
+          let count = 0;
+          (sel.items || []).forEach(item => {
+            const quantity = int(item.quantity);
+            if (!quantity || quantity < 1) fail('INVALID_QUANTITY', '「' + categoryName + '」的选品数量无效');
+            const p = productById(db, item.product_id);
+            if (!p) fail('PRODUCT_NOT_FOUND', '套餐选品里的商品不存在');
+            if (p.status !== 'on_sale') fail('PRODUCT_NOT_FOUND', '「' + p.name + '」已停售，不能加入新订单');
+            const path = p.category_id ? categoryPath(db, p.category_id) : [];
+            if (!path.some(cat => cat.id === categoryId)) {
+              fail('COMBO_PRODUCT_CATEGORY', '「' + p.name + '」不属于子套餐「' + categoryName + '」');
+            }
+            count += quantity;
+          });
+          if (count !== required) {
+            fail('COMBO_SELECTION_COUNT', '子套餐「' + categoryName + '」需选 ' + required + ' 件，当前 ' + count + ' 件');
+          }
+        });
+      } else if (!(c.items || []).length) {
+        fail('COMBO_ITEMS_MISSING', '套餐「' + c.name + '」缺少明细，无法扣减库存');
+      }
     } else {
       const p = productById(db, l.product_id);
       if (!p) fail('PRODUCT_NOT_FOUND', '商品不存在');
@@ -210,13 +313,24 @@ function stockImpact(db, lines) {
   const map = new Map();
   lines.forEach(l => {
     const parts = l.item_type === 'combo'
-      ? expandCombo(db, l.combo_id, l.quantity)
+      ? comboPartsOfLine(db, l)
       : [{ product_id: l.product_id, quantity: int(l.quantity) }];
     parts.forEach(pt => {
       map.set(pt.product_id, (map.get(pt.product_id) || 0) + pt.quantity);
     });
   });
   return Array.from(map, ([product_id, quantity]) => ({ product_id, quantity }));
+}
+
+/* 选品快照：订单保存后不受套餐后续编辑影响 */
+function cloneComboSelections(selections) {
+  return (selections || []).map(group => ({
+    category_id: Number(group.category_id),
+    items: (group.items || []).map(item => ({
+      product_id: Number(item.product_id),
+      quantity: int(item.quantity)
+    }))
+  }));
 }
 
 /* ---------- 建单（可同时收款） ---------- */
@@ -272,7 +386,10 @@ export function createOrder(db, input) {
       unit_price: r2(num(l.unit_price)),
       /* R2：赠品金额为 0 */
       line_amount: l.is_gift ? 0 : r2(int(l.quantity) * num(l.unit_price)),
-      is_gift: !!l.is_gift
+      is_gift: !!l.is_gift,
+      combo_selections: l.item_type === 'combo' && Array.isArray(l.selections) && l.selections.length
+        ? cloneComboSelections(l.selections)
+        : null
     });
   });
 
@@ -654,28 +771,40 @@ export function toggleProductStatus(db, id) {
 export function upsertCombo(db, data) {
   const name = String(data.name || '').trim();
   if (!name) fail('NAME_REQUIRED', '请填写套餐名称');
-  const items = (data.items || [])
-    .filter(it => it.product_id)
-    .map(it => ({ product_id: it.product_id, quantity: Math.max(1, int(it.quantity)) }));
-  if (!items.length) fail('COMBO_ITEMS_MISSING', '请至少选择一件套餐商品');
-  /* 同一商品在套餐里重复选，合并数量 */
-  const merged = new Map();
-  items.forEach(it => merged.set(it.product_id, (merged.get(it.product_id) || 0) + it.quantity));
+  let groups = (data.groups || [])
+    .map(g => ({ category_id: Number(g.category_id) || null, quantity: Math.max(1, int(g.quantity)) }))
+    .filter(g => g.category_id);
+  /* 兼容旧客户端：只传固定商品时按中类归并出子套餐 */
+  if (!groups.length && Array.isArray(data.items)) groups = deriveComboGroups(db, data.items);
+  if (!groups.length) fail('COMBO_GROUPS_MISSING', '请至少配置一个子套餐');
+  const seen = new Set();
+  groups.forEach(g => {
+    const category = categoryById(db, g.category_id);
+    if (!category) fail('CATEGORY_NOT_FOUND', '子套餐的中类不存在');
+    if (categoryLevel(db, category.id) !== 2) fail('COMBO_GROUP_LEVEL', '子套餐只能选择中类');
+    if (seen.has(category.id)) fail('COMBO_GROUP_DUP', '同一中类只能配置一次');
+    seen.add(category.id);
+  });
 
   const payload = {
     name,
     combo_price: r2(num(data.combo_price)),
     original_price: data.original_price === '' || data.original_price == null ? null : r2(num(data.original_price)),
     status: data.status === 'off_sale' ? 'off_sale' : 'on_sale',
-    items: Array.from(merged, ([product_id, quantity]) => ({ product_id, quantity }))
+    groups
   };
   if (data.id) {
     const c = comboById(db, data.id);
     if (!c) fail('COMBO_NOT_FOUND', '套餐不存在');
+    /* items 是旧订单的固定明细快照，编辑时保留，避免历史订单被改写 */
     Object.assign(c, payload);
+    if (!Array.isArray(c.items)) c.items = [];
     return c;
   }
-  const c = { id: nextId(db, 'combo'), combo_code: 'C' + Date.now().toString(36).toUpperCase(), ...payload };
+  const c = {
+    id: nextId(db, 'combo'), combo_code: 'C' + Date.now().toString(36).toUpperCase(),
+    items: [], ...payload
+  };
   db.combos.push(c);
   return c;
 }
@@ -763,13 +892,11 @@ export function buildStats(db, fromDate, toDate) {
     if (i.is_gift) topMap[k].gifts += int(i.quantity);
   });
   comboItems.forEach(ci => {
-    const c = comboById(db, ci.combo_id);
-    if (!c) return;
-    (c.items || []).forEach(it => {
-      const p = productById(db, it.product_id);
-      const k = p ? p.name : ('商品#' + it.product_id);
+    comboPartsOfOrderItem(db, ci).forEach(part => {
+      const p = productById(db, part.product_id);
+      const k = p ? p.name : ('商品#' + part.product_id);
       if (!topMap[k]) topMap[k] = { name: k, qty: 0, amount: 0, gifts: 0 };
-      topMap[k].qty += int(it.quantity) * int(ci.quantity);
+      topMap[k].qty += int(part.quantity);
     });
   });
   const top = Object.values(topMap).sort((a, b) => b.qty - a.qty);
