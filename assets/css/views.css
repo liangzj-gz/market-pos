@@ -162,17 +162,28 @@
 /* 套餐配置：大区/中类/商品三级子套餐 */
 .combo-groups { display: flex; flex-direction: column; gap: 10px; }
 .combo-group {
+  display: grid; grid-template-columns: 172px minmax(0, 1fr);
+  gap: 10px; align-items: stretch;
   background: rgba(255, 255, 255, .5);
   border: 1px solid var(--stroke); border-radius: var(--r-sm);
-  padding: 10px 12px;
+  padding: 8px 10px;
 }
-.combo-group-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.combo-group-head .select { flex: 1; min-width: 120px; }
-.combo-group-qty { width: 68px; flex: none; text-align: center; }
-.combo-group-body { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--stroke); }
+.combo-group-side {
+  display: flex; flex-direction: column; gap: 4px; min-width: 0;
+  padding: 8px; border: 1px solid var(--stroke); border-radius: 10px;
+  background: rgba(255, 255, 255, .4);
+}
+.combo-side-label { font-size: var(--fs-xs); line-height: 1.2; color: var(--label-3); }
+.combo-group-side .select { width: 100%; max-width: none; min-height: 36px; font-size: 13px; }
+.combo-side-foot { display: flex; align-items: center; gap: 4px; }
+.combo-side-foot .btn { margin-left: auto; }
+.combo-group-qty { width: 58px; min-height: 36px; flex: none; text-align: center; }
+.combo-side-actions { display: flex; gap: 4px; margin-top: auto; padding-top: 6px; }
+.combo-side-actions .btn { flex: 1; min-height: 26px; padding: 2px 4px; font-size: 11px; }
+.combo-group-pool { min-width: 0; }
+.combo-group-body { margin-top: 0; padding-top: 0; border-top: none; }
 .combo-group-tools { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
 .combo-group-tools .xs { margin-right: auto; }
-.combo-group-tools .btn { min-height: 26px; padding: 3px 8px; font-size: var(--fs-xs); }
 .combo-product-scroll {
   max-height: 180px; overflow-y: auto;
   display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
@@ -201,16 +212,10 @@
   min-height: 38px; padding: 7px 11px; font-size: 14px;
 }
 .combo-form .combo-group { padding: 8px 10px; }
-.combo-form .combo-group-head { gap: 5px; }
-.combo-form .combo-group-head .select {
-  flex: 0 1 130px; min-width: 0; max-width: 130px;
-  min-height: 36px; font-size: 13px;
-}
+.combo-form .combo-group-side .select { min-height: 36px; font-size: 13px; }
 .combo-form .combo-status { max-width: 150px; }
 .combo-form .combo-status .select { max-width: 150px; }
 .combo-form .combo-group-qty { width: 58px; min-height: 36px; }
-.combo-form .combo-group-body { margin-top: 6px; padding-top: 6px; }
-.combo-form .combo-group-tools .btn { min-height: 24px; padding: 2px 7px; font-size: 12px; }
 .combo-form .combo-product-scroll {
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   max-height: 170px; gap: 4px 6px;
@@ -219,14 +224,13 @@
 
 @media (max-width: 700px) {
   .combo-form .form-grid { grid-template-columns: 1fr; }
+  .combo-group { grid-template-columns: 1fr; }
 }
 @media (max-width: 520px) {
   .combo-group { padding: 9px; }
   .combo-form .input,
   .combo-form .select { min-height: 40px; font-size: 16px; }
-  .combo-form .combo-group-head .select {
-    flex: 1 1 100%; max-width: none; min-height: 40px; font-size: 16px;
-  }
+  .combo-form .combo-group-side .select { min-height: 40px; font-size: 16px; }
   .combo-form .combo-status,
   .combo-form .combo-status .select { max-width: none; }
   .combo-group-qty { width: 60px; min-height: 40px; }

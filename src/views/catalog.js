@@ -1119,40 +1119,51 @@ export const CatalogView = {
       <label>子套餐（大类 + 中类 + 商品 + 必选件数）*</label>
       <div class="combo-groups">
         <div class="combo-group" v-for="(g, i) in comboTarget.groups" :key="i">
-          <div class="combo-group-head">
+          <div class="combo-group-side">
+            <span class="combo-side-label">大类</span>
             <select class="select" v-model.number="g.category_l1_id" @change="onComboGroupRoot(g)" aria-label="大类">
               <option :value="''" disabled>大类</option>
               <option v-for="c in rootCats" :key="c.id" :value="c.id">{{ c.name }}</option>
             </select>
+            <span class="combo-side-label">中类</span>
             <select class="select" v-model.number="g.category_id" @change="onComboGroupMid(g)"
                     :disabled="!g.category_l1_id" aria-label="中类">
               <option :value="''" disabled>中类</option>
               <option v-for="c in groupMidOptions(g)" :key="c.id" :value="c.id">{{ c.name }}</option>
             </select>
-            <input class="input input-mono combo-group-qty" type="number" inputmode="numeric" min="1"
-                   v-model.number="g.quantity" aria-label="必选件数">
-            <span class="xs muted">件</span>
-            <button class="btn btn-quiet btn-icon btn-sm" @click="removeComboGroup(i)"
-                    :disabled="comboTarget.groups.length === 1" aria-label="删除该子套餐">
-              <ui-icon name="close" :size="15" />
-            </button>
-          </div>
-          <div class="combo-group-body" v-if="g.category_id">
-            <div class="combo-group-tools">
-              <span class="xs muted">可选商品 · 已选 {{ g.product_ids.length }} 款</span>
-              <button type="button" class="btn btn-sm btn-quiet" @click="selectAllGroupProducts(g)">全选</button>
-              <button type="button" class="btn btn-sm btn-quiet" @click="clearGroupProducts(g)">全不选</button>
+            <div class="combo-side-foot">
+              <span class="xs muted">必选</span>
+              <input class="input input-mono combo-group-qty" type="number" inputmode="numeric" min="1"
+                     v-model.number="g.quantity" aria-label="必选件数">
+              <span class="xs muted">件</span>
+              <button class="btn btn-quiet btn-icon btn-sm" @click="removeComboGroup(i)"
+                      :disabled="comboTarget.groups.length === 1" aria-label="删除该子套餐">
+                <ui-icon name="close" :size="14" />
+              </button>
             </div>
-            <div class="combo-product-scroll" v-if="groupProducts(g).length">
-              <label class="combo-product-check" v-for="p in groupProducts(g)" :key="p.id">
-                <input type="checkbox" :value="p.id" v-model="g.product_ids">
-                <span class="combo-product-name">{{ p.name }}</span>
-                <span class="tag tag-gray" v-if="p.status === 'off_sale'">停售</span>
-              </label>
+            <div class="combo-side-actions">
+              <button type="button" class="btn btn-sm btn-quiet" @click="selectAllGroupProducts(g)"
+                      :disabled="!g.category_id || !groupProducts(g).length">全选</button>
+              <button type="button" class="btn btn-sm btn-quiet" @click="clearGroupProducts(g)"
+                      :disabled="!g.product_ids.length">全不选</button>
             </div>
-            <div class="xs muted" v-else>这个中类还没有商品</div>
           </div>
-          <div class="xs muted combo-group-hint" v-else>先选大类和中类，再勾选顾客可选的商品</div>
+          <div class="combo-group-pool">
+            <div class="combo-group-body" v-if="g.category_id">
+              <div class="combo-group-tools">
+                <span class="xs muted">可选商品 · 已选 {{ g.product_ids.length }} 款</span>
+              </div>
+              <div class="combo-product-scroll" v-if="groupProducts(g).length">
+                <label class="combo-product-check" v-for="p in groupProducts(g)" :key="p.id">
+                  <input type="checkbox" :value="p.id" v-model="g.product_ids">
+                  <span class="combo-product-name">{{ p.name }}</span>
+                  <span class="tag tag-gray" v-if="p.status === 'off_sale'">停售</span>
+                </label>
+              </div>
+              <div class="xs muted" v-else>这个中类还没有商品</div>
+            </div>
+            <div class="xs muted combo-group-hint" v-else>先选大类和中类，再勾选顾客可选的商品</div>
+          </div>
         </div>
       </div>
       <button class="btn btn-sm" style="margin-top:8px" @click="addComboGroup"><ui-icon name="plus" :size="14" /> 加一个子套餐</button>
