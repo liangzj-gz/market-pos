@@ -4,7 +4,7 @@ import { registerComponents } from './components/index.js';
 import { UiStockInSheet, UiStockTakeSheet } from './components/stock-sheets.js';
 import { LoginView } from './views/login.js';
 import { TodayView } from './views/today.js';
-import { RegisterView } from './views/register.js';
+import { RegisterView } from './views/register.js?v=register-sticky-20261022';
 import { OrdersView } from './views/orders.js';
 import { InventoryView } from './views/inventory.js';
 import { AlertsView } from './views/alerts.js';

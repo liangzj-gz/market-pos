@@ -1,6 +1,6 @@
 /* 开单收银台：选货 → 看应收 → 收款，三步以内完成一单 */
 import {
-  store, productsOnSale, combosOnSale, seriesList, frequentIds,
+  store, productsOnSale, combosOnSale, frequentIds,
   stockState, balanceOf, actions, productById, comboById
 } from '../data/store.js';
 import { money, moneyNum, num, r2, int } from '../util/format.js';
@@ -8,7 +8,7 @@ import {
   addProduct, addCombo, addComboSelection, incLine, decLine, removeLine, setLineQty, setLinePrice,
   toggleGift, clearCart, cartTotal, cartPieces, cartToOrderLines, cartDemandByProduct
 } from '../domain/cart.js';
-import { comboHasGroups, categoryPath } from '../domain/rules.js';
+import { comboHasGroups, categoryPath, childrenOf } from '../domain/rules.js';
 import { UiSheet } from '../components/index.js';
 import { UiPaySheet } from '../components/pay-sheet.js';
 import { UiReceipt } from '../components/receipt.js';
@@ -19,7 +19,7 @@ export const RegisterView = {
   data() {
     return {
       paying: false, submitting: false, receipt: null, confirmClear: false,
-      comboPick: null, pickGroups: []
+      comboPick: null, pickGroups: [], activeRoot: null, activeMid: null
     };
   },
   computed: {
@@ -30,20 +30,19 @@ export const RegisterView = {
       get() { return store.ui.cartNote; },
       set(v) { store.ui.cartNote = v; }
     },
-    series() { return seriesList.value; },
     frequent() { return frequentIds.value; },
     demand() { return cartDemandByProduct(); },
     combos() { return combosOnSale.value; },
     products() {
       const kw = this.reg.search.trim().toLowerCase();
       let list = productsOnSale.value.filter(p => {
-        if (this.reg.series !== '全部' && (p.series || '未分类') !== this.reg.series) return false;
         if (this.reg.onlyFrequent && !this.frequent.includes(p.id)) return false;
         if (!kw) return true;
         return p.name.toLowerCase().includes(kw)
           || (p.series || '').toLowerCase().includes(kw)
           || (p.category || '').toLowerCase().includes(kw)
           || (p.sku_code || '').toLowerCase().includes(kw)
+          || categoryPath(store.db, p.category_id).map(c => c.name).join(' ').toLowerCase().includes(kw)
           || (p.tags || []).join(' ').toLowerCase().includes(kw);
       });
       /* 常卖的排前面，其余按系列聚拢，摊位上找货不用来回翻 */
@@ -55,6 +54,29 @@ export const RegisterView = {
         return s !== 0 ? s : a.name.localeCompare(b.name, 'zh-Hans-CN');
       });
     },
+    rootGroups() {
+      const roots = new Map();
+      const order = new Map(childrenOf(store.db, null)
+        .flatMap(root => [root, ...childrenOf(store.db, root.id)])
+        .map((c, i) => [c.id, i]));
+      for (const p of this.products) {
+        const path = categoryPath(store.db, p.category_id);
+        const root = path[0], mid = path[1];
+        const key = String(root?.id ?? 'none');
+        if (!roots.has(key)) roots.set(key, { key, name: root?.name || '未分类', id: root?.id, total: 0, mids: new Map() });
+        const group = roots.get(key);
+        const midKey = key + '-' + String(mid?.id ?? 'none');
+        if (!group.mids.has(midKey)) group.mids.set(midKey, { key: midKey, id: mid?.id, name: mid?.name || (root ? '未细分' : '未分类'), items: [] });
+        group.total++;
+        group.mids.get(midKey).items.push(p);
+      }
+      const rank = c => order.get(c.id) ?? Infinity;
+      return [...roots.values()].sort((a, b) => rank(a) - rank(b)).map(g => ({
+        ...g, mids: [...g.mids.values()].sort((a, b) => rank(a) - rank(b))
+      }));
+    },
+    activeRootGroup() { return this.rootGroups.find(g => g.key === this.activeRoot) || this.rootGroups[0]; },
+    activeMids() { return this.activeRootGroup?.mids || []; },
     total() { return cartTotal(); },
     pieces() { return cartPieces(); },
     lines() { return this.cart.length; },
@@ -69,7 +91,59 @@ export const RegisterView = {
         && this.pickGroups.every(group => this.pickGroupCount(group) === group.required));
     }
   },
+  watch: {
+    rootGroups() { this.$nextTick(this.refreshCategories); }
+  },
+  mounted() {
+    this._categoryScroll = () => {
+      if (this._categoryRaf) return;
+      this._categoryRaf = requestAnimationFrame(() => {
+        this._categoryRaf = null;
+        this.refreshCategories();
+      });
+    };
+    window.addEventListener('scroll', this._categoryScroll, { passive: true });
+    window.addEventListener('resize', this._categoryScroll, { passive: true });
+    this._categoryObserver = new ResizeObserver(() => this.refreshCategories());
+    this._categoryObserver.observe(this.$refs.pickBar);
+    this.$nextTick(this.refreshCategories);
+  },
+  beforeUnmount() {
+    window.removeEventListener('scroll', this._categoryScroll);
+    window.removeEventListener('resize', this._categoryScroll);
+    this._categoryObserver.disconnect();
+    if (this._categoryRaf) cancelAnimationFrame(this._categoryRaf);
+  },
   methods: {
+    rootDomId(g) { return 'reg-root-' + g.key; },
+    midDomId(g) { return 'reg-mid-' + g.key; },
+    jumpCategory(g, mid) {
+      this.$nextTick(() => {
+        this.refreshCategories();
+        document.getElementById(mid ? this.midDomId(mid) : this.rootDomId(g))?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    },
+    refreshCategories() {
+      const bar = this.$refs.pickBar;
+      const top = parseFloat(getComputedStyle(bar).top) || 0;
+      const threshold = top + bar.getBoundingClientRect().height;
+      this.$el.style.setProperty('--catalog-category-top', threshold + 'px');
+      let root = this.rootGroups[0]?.key || null;
+      let mid = this.rootGroups[0]?.mids[0]?.key || null;
+      for (const g of this.rootGroups) {
+        const r = document.getElementById(this.rootDomId(g));
+        if (r && r.getBoundingClientRect().top <= threshold + 1) {
+          root = g.key;
+          mid = g.mids[0]?.key || null;
+        }
+        for (const m of g.mids) {
+          const el = document.getElementById(this.midDomId(m));
+          if (el && el.getBoundingClientRect().top <= threshold + 41) { root = g.key; mid = m.key; }
+        }
+      }
+      this.activeRoot = root;
+      this.activeMid = mid;
+    },
     money, moneyNum, num, r2, int,
     addProduct(p) { addProduct(p); this.bump(); },
     addCombo(c) {
@@ -201,7 +275,6 @@ export const RegisterView = {
         el.classList.add('is-bump');
       });
     },
-    setSeries(s) { this.reg.series = s; },
     clearSearch() { this.reg.search = ''; },
     doClear() { clearCart(); this.cartOpen = false; this.confirmClear = false; },
     openPay() {
@@ -249,23 +322,29 @@ export const RegisterView = {
   <div class="reg-layout">
     <!-- 选货 -->
     <section class="reg-pick">
-      <div class="pick-bar">
+      <div class="pick-bar" ref="pickBar">
         <div class="input-search">
           <ui-icon name="search" :size="17" />
           <input class="input" v-model="reg.search" type="search" enterkeyhint="search"
-                 placeholder="搜名称 / 系列 / SKU" aria-label="搜索商品">
+                 placeholder="搜名称 / 分类 / SKU" aria-label="搜索商品">
           <button v-if="reg.search" class="pick-clear" @click="clearSearch" aria-label="清空搜索">
             <ui-icon name="close" :size="15" />
           </button>
         </div>
-        <div class="chips-scroll">
-          <button v-for="s in series" :key="s" class="chip" :class="{ 'chip-brand': reg.series === s && s !== '全部' }"
-                  :aria-pressed="reg.series === s" @click="setSeries(s)">{{ s }}</button>
-          <button class="chip chip-freq" :class="{ 'is-on': reg.onlyFrequent }" :aria-pressed="reg.onlyFrequent"
-                  @click="reg.onlyFrequent = !reg.onlyFrequent">
-            <ui-icon name="spark" :size="14" /> 常卖
-          </button>
+        <div class="reg-category-roots cat-rail-mobile-row" aria-label="商品大类导航" v-if="rootGroups.length">
+          <button v-for="g in rootGroups" :key="g.key" class="chip"
+                  :class="{ 'chip-brand': activeRoot === g.key }" :aria-pressed="activeRoot === g.key"
+                  @click="jumpCategory(g)">{{ g.name }}<span class="chip-count">{{ g.total }}</span></button>
         </div>
+        <div class="reg-category-mids cat-rail-mobile-row" aria-label="商品中类导航" v-if="activeMids.length">
+          <button v-for="m in activeMids" :key="m.key" class="crm-mid"
+                  :class="{ 'is-on': activeMid === m.key }" :aria-pressed="activeMid === m.key"
+                  @click="jumpCategory(activeRootGroup, m)">{{ m.name }}<span>{{ m.items.length }}</span></button>
+        </div>
+        <button class="chip chip-freq reg-frequent" :class="{ 'is-on': reg.onlyFrequent }" :aria-pressed="reg.onlyFrequent"
+                @click="reg.onlyFrequent = !reg.onlyFrequent">
+          <ui-icon name="spark" :size="14" /> 常卖
+        </button>
       </div>
 
       <div class="card" v-if="combos.length">
@@ -290,14 +369,24 @@ export const RegisterView = {
       </div></div>
 
       <div v-else-if="!products.length" class="card"><div class="card-body">
-        <ui-empty icon="search" title="没有匹配的商品" text="换个关键词，或把系列切回「全部」。">
-          <button class="btn" @click="reg.search = ''; reg.series = '全部'; reg.onlyFrequent = false">重置筛选</button>
+        <ui-empty icon="search" title="没有匹配的商品" text="换个关键词，或关闭「常卖」筛选。">
+          <button class="btn" @click="reg.search = ''; reg.onlyFrequent = false">重置筛选</button>
         </ui-empty>
       </div></div>
 
       <template v-else>
+        <section v-for="g in rootGroups" :key="g.key" :id="rootDomId(g)" class="root-section">
+          <div class="root-head catalog-root-head" aria-label="商品大类">
+            <span class="root-bar"></span><span class="root-name" :title="g.name">{{ g.name }}</span>
+            <span class="root-count mono">{{ g.total }}</span>
+          </div>
+          <div v-for="m in g.mids" :key="m.key" :id="midDomId(m)" class="prod-group">
+            <div class="pg-head catalog-mid-head" aria-label="商品中类">
+              <span class="pg-dot"></span><span class="pg-name" :title="m.name">{{ m.name }}</span>
+              <span class="pg-count mono">{{ m.items.length }}</span><span class="pg-rule"></span>
+            </div>
         <div class="pick-grid">
-          <button v-for="p in products" :key="p.id" class="pick-cell" :class="{ 'has-qty': inCart(p), 'is-low': stockLeft(p).low }"
+          <button v-for="p in m.items" :key="p.id" class="pick-cell" :class="{ 'has-qty': inCart(p), 'is-low': stockLeft(p).low }"
                   @click="addProduct(p)" :aria-label="'加入 ' + p.name">
             <span class="pick-badge mono" v-if="inCart(p)">{{ inCart(p) }}</span>
             <span class="pick-name">{{ p.name }}</span>
@@ -307,6 +396,8 @@ export const RegisterView = {
             </span>
           </button>
         </div>
+          </div>
+        </section>
       </template>
     </section>
 

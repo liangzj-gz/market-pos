@@ -1449,3 +1449,22 @@
   .bi-sheet-scroll { margin-right: -2px; margin-left: -2px; }
   .bi-sheet-hint { display: block; margin: 0 0 8px; }
 }
+
+/* 开单分类与商品浏览页保持一致，搜索和导航占据独立的顶部空间。 */
+.v-register .pick-bar > .input-search { margin-right: 84px; }
+.reg-frequent { position: absolute; top: 12px; right: 0; }
+.reg-category-roots, .reg-category-mids {
+  display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin-top: 8px;
+}
+.reg-category-roots::-webkit-scrollbar, .reg-category-mids::-webkit-scrollbar { display: none; }
+.reg-category-roots .chip, .reg-category-mids .crm-mid { flex: none; white-space: nowrap; }
+.reg-category-mids .crm-mid {
+  display: inline-flex; align-items: center; gap: 5px;
+  min-height: 26px; padding: 3px 9px;
+  border: 1px solid var(--stroke); border-radius: var(--r-pill);
+  color: var(--label-3); font-size: var(--fs-xs); font-weight: 550;
+}
+.reg-category-mids .crm-mid.is-on { background: var(--blue-soft); color: var(--blue); border-color: transparent; }
+.reg-category-mids .crm-mid span { opacity: .6; }
+.v-register .catalog-mid-head + .pick-grid { padding-top: 10px; }
+@media (min-width: 900px) { .v-register .pick-bar { top: 0; } }
