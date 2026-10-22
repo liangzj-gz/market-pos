@@ -653,8 +653,11 @@ export const CatalogView = {
               aria-label="批量导入商品" title="批量导入商品">
         <ui-icon name="boxIn" :size="18" />
       </button>
-      <button class="btn btn-primary" @click="tab === 'products' ? openNew() : openNewCombo()">
-        <ui-icon name="plus" :size="17" /> {{ tab === 'products' ? '新增商品' : '新增套餐' }}
+      <button class="btn btn-primary btn-icon"
+              @click="tab === 'products' ? openNew() : openNewCombo()"
+              :aria-label="tab === 'products' ? '新增商品' : '新增套餐'"
+              :title="tab === 'products' ? '新增商品' : '新增套餐'">
+        <ui-icon name="plus" :size="18" />
       </button>
     </div>
   </div>
