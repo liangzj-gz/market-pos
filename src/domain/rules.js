@@ -82,7 +82,14 @@ export function expandCombo(db, comboId, qty) {
 
 export const comboHasGroups = c => !!(c && Array.isArray(c.groups) && c.groups.length);
 
-/* 从旧套餐的固定商品明细里按中类归并出子套餐 */
+/* 找出某个中类下的全部商品（用于子套餐可选商品池） */
+export function productsInMid(db, midId) {
+  return (db.products || []).filter(p =>
+    p.category_id && categoryPath(db, p.category_id).some(c => c.id === midId)
+  );
+}
+
+/* 从旧套餐的固定商品明细里按中类归并出子套餐，并记录原商品作为可选池 */
 export function deriveComboGroups(db, items) {
   const map = new Map();
   (items || []).forEach(it => {
@@ -91,9 +98,20 @@ export function deriveComboGroups(db, items) {
     const path = categoryPath(db, p.category_id);
     const mid = path[1] || null;
     if (!mid) return;
-    map.set(mid.id, (map.get(mid.id) || 0) + int(it.quantity));
+    let group = map.get(mid.id);
+    if (!group) {
+      group = {
+        category_l1_id: mid.parent_id || null,
+        category_id: mid.id,
+        quantity: 0,
+        product_ids: []
+      };
+      map.set(mid.id, group);
+    }
+    group.quantity += int(it.quantity);
+    if (!group.product_ids.includes(p.id)) group.product_ids.push(p.id);
   });
-  return Array.from(map, ([category_id, quantity]) => ({ category_id, quantity }));
+  return Array.from(map.values());
 }
 
 /* 旧套餐的固定明细 → 选品快照（历史订单导入/迁移用） */
@@ -289,6 +307,10 @@ function validateLines(db, lines) {
             const path = p.category_id ? categoryPath(db, p.category_id) : [];
             if (!path.some(cat => cat.id === categoryId)) {
               fail('COMBO_PRODUCT_CATEGORY', '「' + p.name + '」不属于子套餐「' + categoryName + '」');
+            }
+            const allowed = Array.isArray(group.product_ids) ? group.product_ids.map(Number) : [];
+            if (allowed.length && !allowed.includes(Number(p.id))) {
+              fail('COMBO_PRODUCT_NOT_ALLOWED', '「' + p.name + '」不在子套餐「' + categoryName + '」的可选商品里');
             }
             count += quantity;
           });
@@ -772,18 +794,40 @@ export function upsertCombo(db, data) {
   const name = String(data.name || '').trim();
   if (!name) fail('NAME_REQUIRED', '请填写套餐名称');
   let groups = (data.groups || [])
-    .map(g => ({ category_id: Number(g.category_id) || null, quantity: Math.max(1, int(g.quantity)) }))
+    .map(g => ({
+      category_id: Number(g.category_id) || null,
+      quantity: Math.max(1, int(g.quantity)),
+      product_ids: Array.isArray(g.product_ids) ? g.product_ids : []
+    }))
     .filter(g => g.category_id);
   /* 兼容旧客户端：只传固定商品时按中类归并出子套餐 */
   if (!groups.length && Array.isArray(data.items)) groups = deriveComboGroups(db, data.items);
   if (!groups.length) fail('COMBO_GROUPS_MISSING', '请至少配置一个子套餐');
   const seen = new Set();
-  groups.forEach(g => {
+  groups = groups.map(g => {
     const category = categoryById(db, g.category_id);
     if (!category) fail('CATEGORY_NOT_FOUND', '子套餐的中类不存在');
     if (categoryLevel(db, category.id) !== 2) fail('COMBO_GROUP_LEVEL', '子套餐只能选择中类');
     if (seen.has(category.id)) fail('COMBO_GROUP_DUP', '同一中类只能配置一次');
     seen.add(category.id);
+
+    const productIds = Array.from(new Set((g.product_ids || []).map(id => Number(id)).filter(Boolean)));
+    if (!productIds.length) fail('COMBO_GROUP_PRODUCTS', '子套餐「' + category.name + '」至少要选一件商品');
+    productIds.forEach(productId => {
+      const p = productById(db, productId);
+      if (!p) fail('PRODUCT_NOT_FOUND', '子套餐「' + category.name + '」里的商品不存在');
+      const path = p.category_id ? categoryPath(db, p.category_id) : [];
+      if (!path.some(cat => cat.id === category.id)) {
+        fail('COMBO_PRODUCT_CATEGORY', '「' + p.name + '」不属于子套餐「' + category.name + '」');
+      }
+    });
+
+    return {
+      category_l1_id: category.parent_id || null,
+      category_id: category.id,
+      quantity: Math.max(1, int(g.quantity)),
+      product_ids: productIds
+    };
   });
 
   const payload = {

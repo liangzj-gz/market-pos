@@ -79,11 +79,13 @@ export const RegisterView = {
     openComboPicker(c) {
       this.comboPick = c;
       this.pickGroups = (c.groups || []).map(g => {
-        const cat = store.db.categories.find(x => x.id === g.category_id);
+        const mid = store.db.categories.find(x => x.id === g.category_id);
+        const root = mid && mid.parent_id ? store.db.categories.find(x => x.id === mid.parent_id) : null;
         return {
           category_id: g.category_id,
-          name: cat ? cat.name : '未分类',
+          label: (root ? root.name + ' / ' : '') + (mid ? mid.name : '未分类'),
           required: int(g.quantity),
+          product_ids: Array.isArray(g.product_ids) ? [...g.product_ids] : [],
           items: []
         };
       });
@@ -91,9 +93,14 @@ export const RegisterView = {
     closeComboPicker() { this.comboPick = null; this.pickGroups = []; },
     comboIsPickable(c) { return comboHasGroups(c); },
     pickerProducts(group) {
-      return productsOnSale.value.filter(p =>
+      let list = productsOnSale.value.filter(p =>
         categoryPath(store.db, p.category_id).some(c => c.id === group.category_id)
       );
+      if (group.product_ids && group.product_ids.length) {
+        const allowed = new Set(group.product_ids.map(Number));
+        list = list.filter(p => allowed.has(p.id));
+      }
+      return list;
     },
     pickQty(group, product) {
       const item = group.items.find(x => x.product_id === product.id);
@@ -104,7 +111,7 @@ export const RegisterView = {
     },
     incPick(group, product) {
       if (this.pickGroupCount(group) >= group.required) {
-        toast('「' + group.name + '」已经选够了', 'warn');
+        toast('「' + group.label + '」已经选够了', 'warn');
         return;
       }
       const item = group.items.find(x => x.product_id === product.id);
@@ -149,8 +156,10 @@ export const RegisterView = {
     comboNames(c) {
       if (comboHasGroups(c)) {
         return c.groups.map(g => {
-          const cat = store.db.categories.find(x => x.id === g.category_id);
-          return (cat ? cat.name : '?') + '×' + int(g.quantity);
+          const mid = store.db.categories.find(x => x.id === g.category_id);
+          const root = mid && mid.parent_id ? store.db.categories.find(x => x.id === mid.parent_id) : null;
+          const label = root ? root.name + '>' + mid.name : (mid ? mid.name : '?');
+          return label + '×' + int(g.quantity);
         }).join(' + ');
       }
       return (c.items || []).map(it => {
@@ -164,12 +173,14 @@ export const RegisterView = {
         return c ? this.comboNames(c) : '按套餐明细扣库存';
       }
       return l.selections.map(g => {
-        const cat = store.db.categories.find(c => c.id === g.category_id);
+        const mid = store.db.categories.find(c => c.id === g.category_id);
+        const root = mid && mid.parent_id ? store.db.categories.find(c => c.id === mid.parent_id) : null;
+        const label = root ? root.name + '>' + mid.name : (mid ? mid.name : '未分类');
         const names = g.items.map(it => {
           const p = productById(store.db, it.product_id);
           return (p ? p.name : '?') + (int(it.quantity) > 1 ? '×' + int(it.quantity) : '');
         }).join('、');
-        return (cat ? cat.name : '未分类') + '：' + names;
+        return label + '：' + names;
       }).join(' · ');
     },
     comboSelectionPieces(l) {
@@ -389,7 +400,7 @@ export const RegisterView = {
     <section class="cp-group" v-for="group in pickGroups" :key="group.category_id">
       <header class="cp-head">
         <div class="grow">
-          <b>{{ group.name }}</b>
+          <b>{{ group.label }}</b>
           <span class="xs muted">需选 {{ group.required }} 件</span>
         </div>
         <span class="cp-count" :class="{ 'is-ok': pickGroupCount(group) === group.required }">

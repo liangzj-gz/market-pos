@@ -5,7 +5,7 @@ import {
 } from '../data/store.js';
 import { money } from '../util/format.js';
 import { parseProductImport, matrixToTsv, IMPORT_SAMPLE, IMPORT_COLUMNS } from '../domain/import.js';
-import { deriveComboGroups, comboHasGroups } from '../domain/rules.js';
+import { deriveComboGroups, comboHasGroups, productsInMid } from '../domain/rules.js';
 import { UiSheet } from '../components/index.js';
 
 const EMPTY_PRODUCT = () => ({
@@ -157,12 +157,11 @@ export const CatalogView = {
       if (!this.prodForm) return [];
       return this.tags.map(t => t.name).filter(n => !this.prodForm.tags.includes(n)).slice(0, 6);
     },
-    midCategories() {
-      return categoryRows.value.filter(c => c.depth === 2);
-    },
     comboFormValid() {
-      return !!(this.comboTarget && this.comboTarget.name.trim()
-        && this.comboTarget.groups.some(g => g.category_id));
+      const groups = (this.comboTarget && this.comboTarget.groups) || [];
+      return !!(this.comboTarget && this.comboTarget.name.trim() && groups.length
+        && groups.every(g => g.category_l1_id && g.category_id
+          && Array.isArray(g.product_ids) && g.product_ids.length));
     },
     activeRootGroup() {
       return this.rootGroups.find(g => g.key === this.activeRoot) || null;
@@ -606,23 +605,56 @@ export const CatalogView = {
     openNewCombo() {
       this.comboTarget = {
         id: null, name: '', combo_price: '', original_price: '', status: 'on_sale',
-        groups: [{ category_id: '', quantity: 1 }]
+        groups: [{ category_l1_id: '', category_id: '', quantity: 1, product_ids: [] }]
       };
     },
     openEditCombo(c) {
       const groups = (comboHasGroups(c) ? c.groups : deriveComboGroups(store.db, c.items || []))
-        .map(g => ({ category_id: g.category_id, quantity: g.quantity }));
+        .map(g => {
+          const mid = store.db.categories.find(x => x.id === g.category_id);
+          const fallbackProducts = mid ? productsInMid(store.db, mid.id).map(p => p.id) : [];
+          return {
+            category_l1_id: g.category_l1_id || (mid ? mid.parent_id : '') || '',
+            category_id: g.category_id,
+            quantity: g.quantity,
+            product_ids: Array.isArray(g.product_ids) && g.product_ids.length
+              ? [...g.product_ids]
+              : fallbackProducts
+          };
+        });
       this.comboTarget = {
         id: c.id, name: c.name, combo_price: c.combo_price,
         original_price: c.original_price === null ? '' : c.original_price,
         status: c.status,
-        groups: groups.length ? groups : [{ category_id: '', quantity: 1 }]
+        groups: groups.length ? groups : [{ category_l1_id: '', category_id: '', quantity: 1, product_ids: [] }]
       };
     },
-    addComboGroup() { this.comboTarget.groups.push({ category_id: '', quantity: 1 }); },
+    addComboGroup() {
+      this.comboTarget.groups.push({ category_l1_id: '', category_id: '', quantity: 1, product_ids: [] });
+    },
     removeComboGroup(i) {
       if (this.comboTarget.groups.length > 1) this.comboTarget.groups.splice(i, 1);
     },
+    groupMidOptions(group) {
+      return group.category_l1_id ? childrenIn(group.category_l1_id) : [];
+    },
+    onComboGroupRoot(group) {
+      group.category_id = '';
+      group.product_ids = [];
+    },
+    onComboGroupMid(group) {
+      group.product_ids = [];
+    },
+    groupProducts(group) {
+      if (!group.category_id) return [];
+      return productsInMid(store.db, group.category_id)
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
+    },
+    selectAllGroupProducts(group) {
+      group.product_ids = this.groupProducts(group).map(p => p.id);
+    },
+    clearGroupProducts(group) { group.product_ids = []; },
     saveCombo() {
       this.saving = true;
       const res = actions.saveCombo(this.comboTarget);
@@ -639,8 +671,10 @@ export const CatalogView = {
     },
     comboParts(c) {
       return this.comboGroupList(c).map(g => {
-        const cat = store.db.categories.find(x => x.id === g.category_id);
-        return (cat ? cat.name : '?') + '×' + g.quantity;
+        const mid = store.db.categories.find(x => x.id === g.category_id);
+        const root = mid && mid.parent_id ? store.db.categories.find(x => x.id === mid.parent_id) : null;
+        const label = root ? root.name + '>' + mid.name : (mid ? mid.name : '?');
+        return label + '×' + g.quantity;
       }).join(' + ');
     },
     comboPieces(c) {
@@ -1064,7 +1098,7 @@ export const CatalogView = {
   </ui-sheet>
 
   <!-- 套餐表单 -->
-  <ui-sheet v-if="comboTarget" :title="comboTarget.id ? '编辑套餐' : '新增套餐'" @close="comboTarget = null">
+  <ui-sheet v-if="comboTarget" wide :title="comboTarget.id ? '编辑套餐' : '新增套餐'" @close="comboTarget = null">
     <div class="form-grid">
       <div class="field span-2">
         <label>套餐名称 *</label>
@@ -1081,22 +1115,47 @@ export const CatalogView = {
     </div>
 
     <div class="field">
-      <label>子套餐（中类 + 必选件数）*</label>
-      <div class="cie-list">
-        <div class="cie-row" v-for="(g, i) in comboTarget.groups" :key="i">
-          <select class="select grow" v-model.number="g.category_id" :aria-label="'第 ' + (i + 1) + ' 个子套餐中类'">
-            <option :value="''" disabled>选择中类</option>
-            <option v-for="c in midCategories" :key="c.id" :value="c.id">{{ c.path }}</option>
-          </select>
-          <input class="input input-mono cie-qty" type="number" inputmode="numeric" min="1" v-model.number="g.quantity" aria-label="必选件数">
-          <span class="xs muted">件</span>
-          <button class="btn btn-quiet btn-icon btn-sm" @click="removeComboGroup(i)" :disabled="comboTarget.groups.length === 1" aria-label="删除该子套餐">
-            <ui-icon name="close" :size="15" />
-          </button>
+      <label>子套餐（大类 + 中类 + 商品 + 必选件数）*</label>
+      <div class="combo-groups">
+        <div class="combo-group" v-for="(g, i) in comboTarget.groups" :key="i">
+          <div class="combo-group-head">
+            <select class="select" v-model.number="g.category_l1_id" @change="onComboGroupRoot(g)" aria-label="大类">
+              <option :value="''" disabled>大类</option>
+              <option v-for="c in rootCats" :key="c.id" :value="c.id">{{ c.name }}</option>
+            </select>
+            <select class="select" v-model.number="g.category_id" @change="onComboGroupMid(g)"
+                    :disabled="!g.category_l1_id" aria-label="中类">
+              <option :value="''" disabled>中类</option>
+              <option v-for="c in groupMidOptions(g)" :key="c.id" :value="c.id">{{ c.name }}</option>
+            </select>
+            <input class="input input-mono combo-group-qty" type="number" inputmode="numeric" min="1"
+                   v-model.number="g.quantity" aria-label="必选件数">
+            <span class="xs muted">件</span>
+            <button class="btn btn-quiet btn-icon btn-sm" @click="removeComboGroup(i)"
+                    :disabled="comboTarget.groups.length === 1" aria-label="删除该子套餐">
+              <ui-icon name="close" :size="15" />
+            </button>
+          </div>
+          <div class="combo-group-body" v-if="g.category_id">
+            <div class="combo-group-tools">
+              <span class="xs muted">可选商品 · 已选 {{ g.product_ids.length }} 款</span>
+              <button type="button" class="btn btn-sm btn-quiet" @click="selectAllGroupProducts(g)">全选</button>
+              <button type="button" class="btn btn-sm btn-quiet" @click="clearGroupProducts(g)">全不选</button>
+            </div>
+            <div class="combo-product-scroll" v-if="groupProducts(g).length">
+              <label class="combo-product-check" v-for="p in groupProducts(g)" :key="p.id">
+                <input type="checkbox" :value="p.id" v-model="g.product_ids">
+                <span class="combo-product-name">{{ p.name }}</span>
+                <span class="tag tag-gray" v-if="p.status === 'off_sale'">停售</span>
+              </label>
+            </div>
+            <div class="xs muted" v-else>这个中类还没有商品</div>
+          </div>
+          <div class="xs muted combo-group-hint" v-else>先选大类和中类，再勾选顾客可选的商品</div>
         </div>
       </div>
       <button class="btn btn-sm" style="margin-top:8px" @click="addComboGroup"><ui-icon name="plus" :size="14" /> 加一个子套餐</button>
-      <div class="field-hint">开单时顾客从每个中类里自选对应件数，套餐价不变；同一商品可选多件。</div>
+      <div class="field-hint">顾客开单时从勾选的商品里选够对应件数；同一商品可选多件。</div>
     </div>
 
     <div class="field">

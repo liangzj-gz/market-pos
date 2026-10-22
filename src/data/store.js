@@ -15,7 +15,7 @@ import {
   createOrder, confirmOrder, cancelOrder, stockIn, setStock,
   upsertProduct, toggleProductStatus, upsertCombo, deleteCombo,
   resolveAlert, buildStats, syncAlerts, expandCombo, computeTotal,
-  deriveComboGroups, comboPartsOfOrderItem, comboSelectionsFromItems,
+  deriveComboGroups, comboPartsOfOrderItem, comboSelectionsFromItems, productsInMid,
   buildCategoryTree, collapseCategoryDepth, categoryById, categoryPath, categoryLabel, categoryLevel,
   childrenOf, categoryProductCount, upsertCategory,
   deleteCategory as deleteCategoryRule,
@@ -146,6 +146,27 @@ function migrate(db) {
     if (!Array.isArray(c.groups)) c.groups = [];
     /* 旧套餐按固定商品所属中类派生出自选子套餐；items 继续留给历史订单 */
     if (!c.groups.length) c.groups = deriveComboGroups(db, c.items);
+    c.groups = c.groups.map(g => {
+      const mid = categoryById(db, g.category_id);
+      if (!mid) return g;
+      let productIds = Array.isArray(g.product_ids) ? g.product_ids.map(Number).filter(Boolean) : [];
+      if (!productIds.length) {
+        const fromItems = [];
+        (c.items || []).forEach(it => {
+          const p = productById(db, it.product_id);
+          if (p && p.category_id && categoryPath(db, p.category_id).some(cat => cat.id === mid.id) && !fromItems.includes(p.id)) {
+            fromItems.push(p.id);
+          }
+        });
+        productIds = fromItems.length ? fromItems : productsInMid(db, mid.id).map(p => p.id);
+      }
+      return {
+        category_l1_id: mid.parent_id || null,
+        category_id: mid.id,
+        quantity: Math.max(1, int(g.quantity) || 1),
+        product_ids: productIds
+      };
+    });
   });
   db.tags = Array.from(new Set([...db.tags, ...db.products.flatMap(p => p.tags || [])]));
   return db;
