@@ -54,6 +54,7 @@ export const CatalogView = {
       catTab: 'categories',
       catPath: [],            // 当前选中的分类链路，三栏与钻取共用
       catEditing: false,      // 窄屏列表的编辑态
+      catDrag: null,
       catEdit: null,          // { id: null|number, parentId, name, depth }
       tagEdit: null,          // { from, name }
       newTag: '',
@@ -223,6 +224,8 @@ export const CatalogView = {
     }
   },
   watch: {
+    catManager() { this.finishCategoryDrag(); },
+    catTab() { this.finishCategoryDrag(); },
     rootGroups() { this._anchor = null; this.$nextTick(this.refreshCatalogLayout); },
     tab() {
       this._anchor = null;
@@ -253,6 +256,7 @@ export const CatalogView = {
     });
   },
   beforeUnmount() {
+    this.finishCategoryDrag();
     window.removeEventListener('scroll', this._onScroll);
     this.$el.removeEventListener('scroll', this._onScroll);
     window.removeEventListener('wheel', this._cancelAnchor);
@@ -573,7 +577,10 @@ export const CatalogView = {
       this.newTag = '';
     },
     deco(list) {
-      return list.map(c => ({
+      const drag = this.catDrag;
+      const ordered = drag?.active && (list[0]?.parent_id || null) === drag.parentId
+        ? [...list].sort((a, b) => drag.ids.indexOf(a.id) - drag.ids.indexOf(b.id)) : list;
+      return ordered.map(c => ({
         ...c,
         count: categoryProductCount(store.db, c.id),
         hasChildren: childrenIn(c.id).length > 0
@@ -590,6 +597,96 @@ export const CatalogView = {
     },
     moveCategory(id, direction) {
       if (this.canMoveCategory(id, direction)) actions.moveCategory(id, direction);
+    },
+    startCategoryDrag(event, category) {
+      if (this.catEdit || this.catDrag || !event.isPrimary || event.button !== 0) return;
+      const list = event.currentTarget.closest('.cat-col-list, .cat-list');
+      const ids = childrenIn(category.parent_id).map(c => c.id);
+      if (ids.length < 2) return;
+      event.preventDefault();
+      this.catDrag = {
+        id: category.id, name: category.name, parentId: category.parent_id || null,
+        ids, x: event.clientX, y: event.clientY, active: false
+      };
+      let scroll = list;
+      while (scroll && !(scroll.scrollHeight > scroll.clientHeight && /auto|scroll/.test(getComputedStyle(scroll).overflowY))) {
+        scroll = scroll.parentElement;
+      }
+      this._categoryDrag = { list, scroll, pointerId: event.pointerId, x: event.clientX, y: event.clientY };
+      this._categoryMove = e => {
+        if (e.pointerId !== this._categoryDrag.pointerId) return;
+        e.preventDefault();
+        const drag = this.catDrag;
+        drag.x = e.clientX; drag.y = e.clientY;
+        if (!drag.active && Math.hypot(drag.x - this._categoryDrag.x, drag.y - this._categoryDrag.y) > 5) drag.active = true;
+      };
+      this._categoryEnd = e => {
+        if (e.pointerId !== this._categoryDrag.pointerId) return;
+        this.catDrag.x = e.clientX; this.catDrag.y = e.clientY;
+        this.finishCategoryDrag(e.type === 'pointerup');
+      };
+      this._categoryKey = e => { if (e.key === 'Escape') { e.preventDefault(); this.finishCategoryDrag(); } };
+      this._categoryBlur = () => this.finishCategoryDrag();
+      list.setPointerCapture(event.pointerId);
+      list.addEventListener('lostpointercapture', this._categoryBlur);
+      window.addEventListener('pointermove', this._categoryMove, { passive: false });
+      window.addEventListener('pointerup', this._categoryEnd);
+      window.addEventListener('pointercancel', this._categoryEnd);
+      window.addEventListener('keydown', this._categoryKey);
+      window.addEventListener('blur', this._categoryBlur);
+      this._categoryTick = () => {
+        const drag = this.catDrag;
+        if (!drag) return;
+        const { list, scroll } = this._categoryDrag;
+        if (!list.isConnected) { this.finishCategoryDrag(); return; }
+        const bounds = list.getBoundingClientRect();
+        if (drag.active && drag.x >= bounds.left && drag.x <= bounds.right) {
+          if (scroll) {
+            const box = scroll.getBoundingClientRect();
+            if (drag.y < box.top + 36) scroll.scrollTop -= Math.min(10, (box.top + 36 - drag.y) / 4);
+            else if (drag.y > box.bottom - 36) scroll.scrollTop += Math.min(10, (drag.y - box.bottom + 36) / 4);
+          }
+          const rows = [...list.querySelectorAll('.cat-sort-row')];
+          const index = rows.filter(row => Number(row.dataset.categoryId) !== drag.id)
+            .filter(row => { const r = row.getBoundingClientRect(); return drag.y > r.top + r.height / 2; }).length;
+          const from = drag.ids.indexOf(drag.id);
+          if (index !== from) {
+            const ids = [...drag.ids];
+            ids.splice(index, 0, ids.splice(from, 1)[0]);
+            drag.ids = ids;
+          }
+        }
+        this._categoryFrame = requestAnimationFrame(this._categoryTick);
+      };
+      this._categoryFrame = requestAnimationFrame(this._categoryTick);
+    },
+    finishCategoryDrag(commit = false) {
+      const drag = this.catDrag;
+      if (!drag) return;
+      const bounds = this._categoryDrag.list.getBoundingClientRect();
+      const inside = drag.x >= bounds.left && drag.x <= bounds.right && drag.y >= bounds.top && drag.y <= bounds.bottom;
+      cancelAnimationFrame(this._categoryFrame);
+      window.removeEventListener('pointermove', this._categoryMove);
+      window.removeEventListener('pointerup', this._categoryEnd);
+      window.removeEventListener('pointercancel', this._categoryEnd);
+      window.removeEventListener('keydown', this._categoryKey);
+      window.removeEventListener('blur', this._categoryBlur);
+      const { list, pointerId } = this._categoryDrag;
+      list.removeEventListener('lostpointercapture', this._categoryBlur);
+      if (list.hasPointerCapture(pointerId)) list.releasePointerCapture(pointerId);
+      this.catDrag = null;
+      this._categoryDrag = null;
+      if (commit && drag.active && inside) {
+        const siblings = childrenIn(drag.parentId);
+        const index = [...list.querySelectorAll('.cat-sort-row')]
+          .filter(row => Number(row.dataset.categoryId) !== drag.id)
+          .filter(row => { const r = row.getBoundingClientRect(); return drag.y > r.top + r.height / 2; }).length;
+        const target = siblings[index];
+        if (target && target.id !== drag.id) {
+          const result = actions.moveCategoryTo(drag.id, target.id);
+          if (result.ok) toast('已调整「' + drag.name + '」的顺序', 'ok');
+        }
+      }
     },
     parentAt(depth) { return depth === 0 ? null : (this.catPath[depth - 1] || null); },
     canAdd(depth) { return depth < 2 && (depth === 0 || !!this.parentAt(depth)); },
@@ -1207,6 +1304,12 @@ export const CatalogView = {
   </ui-sheet>
 
   <!-- 分类 / 标签管理 -->
+  <Teleport to="body">
+    <div v-if="catDrag?.active" class="cat-drag-ghost" aria-hidden="true"
+         :style="{ left: catDrag.x + 'px', top: catDrag.y + 'px' }">
+      <span class="cat-grip"></span>{{ catDrag.name }}
+    </div>
+  </Teleport>
   <ui-sheet v-if="catManager" title="分类与标签" wide @close="catManager = false">
     <div class="seg" role="tablist">
       <button class="seg-btn" :class="{ 'is-on': catTab === 'categories' }" role="tab" :aria-selected="catTab === 'categories'"
@@ -1216,7 +1319,7 @@ export const CatalogView = {
     </div>
 
     <template v-if="catTab === 'categories'">
-      <!-- 大屏：三栏联动 -->
+      <!-- 大屏：两栏联动 -->
       <div class="cat-cols">
         <section class="cat-col" v-for="(col, ci) in columns" :key="ci">
           <header class="cat-col-head">
@@ -1233,13 +1336,22 @@ export const CatalogView = {
                   <ui-icon name="close" :size="14" />
                 </button>
               </div>
-              <button v-else class="cat-item" :class="{ 'is-selected': catPath[ci] === c.id }"
-                      @click="pick(ci, c.id)">
+              <div v-else class="cat-sort-row" :data-category-id="c.id"
+                   :class="{ 'is-dragging': catDrag?.active && catDrag.id === c.id }">
+                <button class="cat-drag-handle" :disabled="!!catEdit || col.length < 2"
+                        :aria-label="'拖动排序' + c.name" title="拖动排序，也可使用键盘上下键"
+                        @pointerdown="startCategoryDrag($event, c)" @click.stop
+                        @keydown.up.prevent="moveCategory(c.id, -1)" @keydown.down.prevent="moveCategory(c.id, 1)">
+                  <span class="cat-grip" aria-hidden="true"></span>
+                </button>
+                <button class="cat-item" :class="{ 'is-selected': catPath[ci] === c.id }"
+                        @click="pick(ci, c.id)">
                 <span class="cat-dot" :class="'lv' + (ci + 1)"></span>
                 <span class="cat-name">{{ c.name }}</span>
                 <span class="cat-count mono">{{ c.count }}</span>
                 <ui-icon v-if="c.hasChildren" name="chevronRight" :size="13" class="cat-chev" />
-              </button>
+                </button>
+              </div>
             </template>
 
             <div v-if="catEdit && catEdit.id === null && catEdit.depth === ci" class="cat-edit-row">
@@ -1256,12 +1368,6 @@ export const CatalogView = {
             </div>
           </div>
           <footer class="cat-col-foot">
-            <button class="btn btn-sm btn-quiet" @click="moveCategory(catPath[ci], -1)" :disabled="!canMoveCategory(catPath[ci], -1)">
-              <ui-icon name="chevronUp" :size="13" /> 上移
-            </button>
-            <button class="btn btn-sm btn-quiet" @click="moveCategory(catPath[ci], 1)" :disabled="!canMoveCategory(catPath[ci], 1)">
-              <ui-icon name="chevronDown" :size="13" /> 下移
-            </button>
             <button class="btn btn-sm btn-quiet" @click="addIn(ci)" :disabled="!canAdd(ci)">
               <ui-icon name="plus" :size="13" /> 新增
             </button>
@@ -1283,7 +1389,8 @@ export const CatalogView = {
         </div>
 
         <div class="cat-list">
-          <div class="cat-row" v-for="c in drillList" :key="c.id">
+          <div class="cat-row cat-sort-row" v-for="c in drillList" :key="c.id" :data-category-id="c.id"
+               :class="{ 'is-dragging': catDrag?.active && catDrag.id === c.id }">
             <template v-if="catEdit && catEdit.id === c.id">
               <input class="input cat-input" v-model="catEdit.name" placeholder="分类名称"
                      @keydown.enter.prevent="saveCatEdit" @keydown.esc="catEdit = null" autofocus>
@@ -1293,6 +1400,12 @@ export const CatalogView = {
               </button>
             </template>
             <template v-else>
+              <button class="cat-drag-handle" :disabled="!!catEdit || drillList.length < 2"
+                      :aria-label="'拖动排序' + c.name" title="拖动排序，也可使用键盘上下键"
+                      @pointerdown="startCategoryDrag($event, c)" @click.stop
+                      @keydown.up.prevent="moveCategory(c.id, -1)" @keydown.down.prevent="moveCategory(c.id, 1)">
+                <span class="cat-grip" aria-hidden="true"></span>
+              </button>
               <button class="cat-item grow" @click="pick(catPath.length, c.id)">
                 <span class="cat-dot" :class="'lv' + (catPath.length + 1)"></span>
                 <span class="cat-name">{{ c.name }}</span>
@@ -1300,14 +1413,6 @@ export const CatalogView = {
                 <ui-icon v-if="c.hasChildren" name="chevronRight" :size="14" class="cat-chev" />
               </button>
               <span class="cat-actions" v-if="catEditing">
-                <button class="btn btn-sm btn-quiet cat-move" @click="moveCategory(c.id, -1)"
-                        :disabled="!canMoveCategory(c.id, -1)" :aria-label="'上移' + c.name" title="上移">
-                  <ui-icon name="chevronUp" :size="16" />
-                </button>
-                <button class="btn btn-sm btn-quiet cat-move" @click="moveCategory(c.id, 1)"
-                        :disabled="!canMoveCategory(c.id, 1)" :aria-label="'下移' + c.name" title="下移">
-                  <ui-icon name="chevronDown" :size="16" />
-                </button>
                 <button class="btn btn-sm btn-quiet" @click="renameNode(c)">改名</button>
                 <button class="btn btn-sm btn-quiet cat-del" @click="askDeleteNode(c)">删除</button>
               </span>
@@ -1329,14 +1434,14 @@ export const CatalogView = {
         </div>
 
         <div class="cat-drill-foot">
-          <button class="btn btn-sm" @click="catEditing = !catEditing" :disabled="!!catEdit">{{ catEditing ? '完成' : '排序 / 编辑' }}</button>
+          <button class="btn btn-sm" @click="catEditing = !catEditing" :disabled="!!catEdit">{{ catEditing ? '完成' : '编辑' }}</button>
           <button class="btn btn-sm btn-primary" @click="addIn(catPath.length)" :disabled="!canAdd(catPath.length)">
             <ui-icon name="plus" :size="14" /> 新增分类
           </button>
         </div>
         <p class="xs muted" style="margin-top:8px">最多两级，商品挂在最后选中的一级</p>
       </div>
-      <p class="xs muted cat-sort-hint">同级分类可上移、下移，顺序自动保存并同步到商品页和开单页。</p>
+      <p class="xs muted cat-sort-hint">拖动分类左侧手柄调整同级顺序，松手自动保存，并同步到商品页和开单页。</p>
     </template>
 
     <template v-else>

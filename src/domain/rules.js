@@ -598,6 +598,22 @@ export function moveCategory(db, id, direction) {
   return category;
 }
 
+export function moveCategoryTo(db, id, targetId) {
+  const category = categoryById(db, id);
+  const target = categoryById(db, targetId);
+  if (!category || !target) fail('CATEGORY_NOT_FOUND', '分类不存在');
+  if ((category.parent_id || null) !== (target.parent_id || null)) {
+    fail('CATEGORY_SORT', '只能在同级分类内排序');
+  }
+  const siblings = childrenOf(db, category.parent_id);
+  const from = siblings.findIndex(c => c.id === id);
+  const to = siblings.findIndex(c => c.id === targetId);
+  if (from === to) return category;
+  siblings.splice(to, 0, siblings.splice(from, 1)[0]);
+  siblings.forEach((c, index) => { c.sort = index; });
+  return category;
+}
+
 /* 含子分类在内的商品数 */
 export function categoryProductCount(db, id) {
   const ids = new Set([id]);

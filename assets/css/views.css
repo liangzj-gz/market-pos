@@ -917,9 +917,33 @@
 .cat-item.grow { flex: 1; min-height: 48px; border-radius: 0; }
 .cat-actions { display: flex; align-items: center; gap: 2px; flex: none; }
 .cat-actions .btn { padding: 4px 8px; font-size: var(--fs-xs); }
-.cat-actions .cat-move { min-width: 32px; min-height: 36px; padding: 4px; }
 .cat-actions .btn:disabled { opacity: .35; }
 .cat-sort-hint { margin-top: 10px; line-height: 1.6; }
+.cat-sort-row { display: flex; align-items: center; gap: 0; border-radius: 8px; }
+.cat-sort-row > .cat-item { flex: 1; min-width: 0; width: auto; }
+.cat-sort-row.is-dragging { background: var(--blue-soft); outline: 1px dashed var(--blue); outline-offset: -1px; }
+.cat-sort-row.is-dragging > * { opacity: .35; }
+.cat-drag-handle {
+  display: flex; align-items: center; justify-content: center;
+  align-self: stretch; width: 32px; min-height: 40px; flex: none;
+  color: var(--label-3); border-radius: 8px;
+  cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.cat-drag-handle:hover { color: var(--blue); background: var(--blue-soft); }
+.cat-drag-handle:active { cursor: grabbing; }
+.cat-drag-handle:disabled { opacity: .3; cursor: default; }
+.cat-grip {
+  display: inline-block; width: 12px; height: 18px; flex: none;
+  background: radial-gradient(circle, currentColor 1.4px, transparent 1.6px) 0 0 / 6px 6px;
+}
+.cat-drag-ghost {
+  position: fixed; z-index: 1000; pointer-events: none;
+  display: flex; align-items: center; gap: 10px; padding: 12px 18px;
+  transform: translate(-20px, -50%); max-width: calc(100vw - 24px);
+  border: 1px solid var(--blue); border-radius: var(--r-sm);
+  background: var(--blue-soft); color: var(--blue); box-shadow: var(--sh-pop);
+  font-size: var(--fs-md); font-weight: 650; white-space: nowrap;
+}
 .cat-edit-row {
   display: flex; align-items: center; gap: 6px;
   padding: 7px; border-bottom: 1px solid var(--stroke);
