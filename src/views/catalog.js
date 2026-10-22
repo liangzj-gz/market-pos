@@ -651,7 +651,7 @@ export const CatalogView = {
       </button>
       <button v-if="tab === 'products'" class="btn btn-icon" @click="openImport"
               aria-label="批量导入商品" title="批量导入商品">
-        <ui-icon name="boxIn" :size="18" />
+        <span class="bi-char">批</span>
       </button>
       <button class="btn btn-primary btn-icon"
               @click="tab === 'products' ? openNew() : openNewCombo()"

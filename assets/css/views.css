@@ -1231,6 +1231,7 @@
 
 .import-entry { margin-bottom: 12px; }
 
+.bi-char { font-size: 13px; font-weight: 650; line-height: 1; letter-spacing: -.02em; }
 .bi-modes { margin-bottom: 14px; }
 .bi-file.is-loading { opacity: .6; pointer-events: none; }
 
