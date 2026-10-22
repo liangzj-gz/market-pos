@@ -192,10 +192,12 @@
 /* 套餐表单用标准抽屉宽度，整体收紧 */
 .combo-form .field { margin-bottom: 12px; }
 .combo-form .field > label { margin-bottom: 4px; }
-.combo-form .form-grid { gap: 0 10px; }
+.combo-form .form-grid { gap: 0 10px; max-width: 420px; }
 .combo-form .combo-group { padding: 8px 10px; }
 .combo-form .combo-group-head { gap: 5px; }
-.combo-form .combo-group-head .select { min-width: 0; }
+.combo-form .combo-group-head .select { flex: 0 1 150px; min-width: 0; max-width: 150px; }
+.combo-form .combo-status { max-width: 170px; }
+.combo-form .combo-status .select { max-width: 170px; }
 .combo-form .combo-group-qty { width: 58px; }
 .combo-form .combo-group-body { margin-top: 6px; padding-top: 6px; }
 .combo-form .combo-group-tools .btn { min-height: 24px; padding: 2px 7px; }
@@ -207,7 +209,10 @@
 
 @media (max-width: 520px) {
   .combo-group { padding: 9px; }
-  .combo-group-head .select { flex: 1 1 100%; }
+  .combo-group-head .select { flex: 1 1 100%; max-width: none; }
+  .combo-form .form-grid { max-width: none; }
+  .combo-form .combo-status,
+  .combo-form .combo-status .select { max-width: none; }
   .combo-group-qty { width: 60px; }
   .combo-product-scroll { grid-template-columns: 1fr 1fr; max-height: 220px; }
 }

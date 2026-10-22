@@ -1159,7 +1159,7 @@ export const CatalogView = {
       <div class="field-hint">顾客开单时从勾选的商品里选够对应件数；同一商品可选多件。</div>
     </div>
 
-    <div class="field">
+    <div class="field combo-status">
       <label>状态</label>
       <select class="select" v-model="comboTarget.status">
         <option value="on_sale">在售</option>
