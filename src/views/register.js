@@ -21,7 +21,7 @@ export const RegisterView = {
   data() {
     return {
       paying: false, submitting: false, receipt: null, confirmClear: false,
-      scanning: false, scanFeedback: '', scanTone: 'info',
+      scanning: false, scanFeedback: '', scanTone: 'info', scanSuccess: 0,
       comboPick: null, pickGroups: [], activeRoot: null, activeMid: null, pickTab: 'products', tag: 'all'
     };
   },
@@ -153,6 +153,7 @@ export const RegisterView = {
       this.scanFeedback = '已加入「' + match.product.name + '」 ' + money(match.product.list_price)
         + '，该商品已选 ' + this.inCart(match.product) + ' 件';
       this.scanTone = 'ok';
+      this.scanSuccess++;
     },
     rootDomId(g) { return 'reg-root-' + g.key; },
     midDomId(g) { return 'reg-mid-' + g.key; },
@@ -390,7 +391,7 @@ export const RegisterView = {
   template: `
 <div class="v-register">
   <ui-sheet v-if="scanning" title="扫码录入商品" @close="scanning = false">
-    <ui-barcode-scanner :feedback="scanFeedback" :tone="scanTone" @scan="scanProduct" />
+    <ui-barcode-scanner :feedback="scanFeedback" :tone="scanTone" :success-key="scanSuccess" @scan="scanProduct" />
     <template #foot><button class="btn btn-primary grow" @click="scanning = false">完成选品 · 本单 {{ pieces }} 件</button></template>
   </ui-sheet>
   <div class="reg-layout">

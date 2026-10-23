@@ -1628,3 +1628,21 @@
 .product-barcode { margin-top: 8px; }
 .product-barcode-preview { background: white; border: 1px solid var(--stroke); border-radius: var(--r-sm); overflow-x: auto; padding: 5px; margin-bottom: 7px; }
 .product-barcode-preview svg { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+
+.barcode-success {
+  position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 9px;
+  background: var(--glass-strong); color: var(--green);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  animation: barcode-success-flash .5s ease both;
+}
+.barcode-success-icon { display: grid; place-items: center; width: 68px; height: 68px; border-radius: 50%; background: var(--green-soft); }
+.barcode-success-icon svg { width: 48px; height: 48px; }
+.barcode-success-icon path { stroke: currentColor; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 45; stroke-dashoffset: 45; animation: barcode-success-tick .22s .04s ease-out forwards; }
+.barcode-success strong { font-size: var(--fs-lg); font-weight: 650; }
+@keyframes barcode-success-flash { 0% { opacity: 0; } 15%, 78% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes barcode-success-tick { to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .barcode-success { animation: none; }
+  .barcode-success-icon path { animation: none; stroke-dashoffset: 0; }
+}

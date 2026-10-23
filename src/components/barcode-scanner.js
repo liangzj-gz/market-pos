@@ -17,9 +17,10 @@ function loadDecoder() {
 
 export const UiBarcodeScanner = {
   name: 'UiBarcodeScanner',
-  props: { feedback: { type: String, default: '' }, tone: { type: String, default: 'info' } },
+  props: { feedback: { type: String, default: '' }, tone: { type: String, default: 'info' }, successKey: { type: Number, default: 0 } },
   emits: ['scan'],
-  data() { return { manual: '', starting: false, running: false, error: '', cameras: [], deviceId: '' }; },
+  data() { return { manual: '', starting: false, running: false, confirming: false, error: '', cameras: [], deviceId: '' }; },
+  watch: { successKey() { this.showSuccess(); } },
   mounted() {
     this._generation = 0;
     this._visibility = () => { if (document.hidden) this.stop(); };
@@ -34,7 +35,14 @@ export const UiBarcodeScanner = {
     window.removeEventListener('pagehide', this._pagehide);
   },
   methods: {
+    showSuccess() {
+      clearTimeout(this._successTimer);
+      this.confirming = true;
+      this._successTimer = setTimeout(() => { this.confirming = false; }, 500);
+    },
     stop() {
+      clearTimeout(this._successTimer);
+      this.confirming = false;
       this._generation++;
       this._controls?.stop(); this._controls = null;
       this._stream?.getTracks().forEach(track => track.stop()); this._stream = null;
@@ -61,7 +69,7 @@ export const UiBarcodeScanner = {
         if (!current()) return;
         const reader = new ZXing.BrowserMultiFormatOneDReader(undefined, { delayBetweenScanAttempts: 180, delayBetweenScanSuccess: 200 });
         const controls = await reader.decodeFromStream(stream, this.$refs.video, (result, error) => {
-          if (!current()) return;
+          if (!current() || this.confirming) return;
           if (result) {
             const code = result.getText();
             if (gate(code)) this.$emit('scan', code);
@@ -83,6 +91,7 @@ export const UiBarcodeScanner = {
       } finally { if (current()) this.starting = false; }
     },
     submitManual() {
+      if (this.confirming) return;
       const code = normalizeBarcode(this.manual);
       if (!code) return;
       this.$emit('scan', code); this.manual = '';
@@ -94,6 +103,10 @@ export const UiBarcodeScanner = {
       <video ref="video" autoplay muted playsinline aria-label="条码摄像头预览"></video>
       <div v-if="!running" class="barcode-camera-hint">{{ starting ? '正在申请摄像头权限…' : '开启后置摄像头，对准商品条形码' }}</div>
       <div v-else class="barcode-frame" aria-hidden="true"></div>
+      <div v-if="confirming" class="barcode-success" aria-hidden="true">
+        <span class="barcode-success-icon"><svg viewBox="0 0 48 48" fill="none"><path d="M12 25l8 8 17-18" /></svg></span>
+        <strong>已加入本单</strong>
+      </div>
     </div>
     <div class="barcode-camera-actions">
       <button class="btn btn-sm btn-primary" v-if="!running && !starting" @click="start">开启摄像头</button>
@@ -108,7 +121,7 @@ export const UiBarcodeScanner = {
     <p class="field-hint">同一条码停留在镜头中只录入一次；移开约 1 秒后重新扫入可再次录入。</p>
     <form class="barcode-manual" @submit.prevent="submitManual">
       <input class="input input-mono" v-model="manual" placeholder="也可手动输入条码" aria-label="手动输入商品条码" autocomplete="off" autocapitalize="off" spellcheck="false">
-      <button class="btn" type="submit" :disabled="!manual.trim()">确认</button>
+      <button class="btn" type="submit" :disabled="confirming || !manual.trim()">确认</button>
     </form>
   </div>`
 };
