@@ -1603,3 +1603,25 @@
   .catalog-category-rail .cat-rail-mid { padding: 6px 8px 6px 20px; font-size: var(--fs-xs); }
   .v-catalog .root-section:last-child > .prod-group:last-child { min-height: calc(var(--catalog-pane-height) - var(--catalog-toolbar-height) - 8px); }
 }
+
+/* 商品条码绑定与开单扫码 */
+.reg-search-scan { display: flex; align-items: center; gap: 6px; flex: 0 1 280px; min-width: 0; }
+.v-register .reg-search-scan .catalog-search { flex: 1; min-width: 0; width: auto; }
+.reg-scan-button { flex: none; min-height: 32px; color: var(--blue); background: var(--blue-soft); }
+.barcode-scanner { margin-top: 10px; }
+.barcode-camera { position: relative; overflow: hidden; aspect-ratio: 16 / 9; max-height: 260px; border-radius: var(--r-sm); background: var(--fill-2); }
+.barcode-camera video { display: block; width: 100%; height: 100%; object-fit: cover; }
+.barcode-camera:not(.is-running) video { visibility: hidden; }
+.barcode-camera-hint { position: absolute; inset: 0; display: grid; place-items: center; padding: 20px; text-align: center; font-size: var(--fs-sm); color: var(--label-2); }
+.barcode-frame { position: absolute; inset: 24% 8%; border: 2px solid var(--blue); border-radius: var(--r-sm); pointer-events: none; }
+.barcode-camera-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+.barcode-camera-actions .select { flex: 1; min-width: 0; font-size: var(--fs-sm); min-height: 32px; }
+.barcode-message { font-size: var(--fs-sm); line-height: 1.5; margin: 10px 0 5px; overflow-wrap: anywhere; }
+.barcode-message.is-warn { color: var(--red); }
+.barcode-message.is-ok { color: var(--green); }
+.barcode-manual { display: flex; align-items: center; gap: 7px; margin-top: 10px; }
+.barcode-manual .input { flex: 1; min-width: 0; }
+.barcode-manual .btn { flex: none; }
+@media (max-width: 899px) {
+  .reg-search-scan { flex: none; width: 100%; }
+}

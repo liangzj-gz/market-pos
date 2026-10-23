@@ -4,11 +4,11 @@ import { registerComponents } from './components/index.js';
 import { UiStockInSheet, UiStockTakeSheet } from './components/stock-sheets.js';
 import { LoginView } from './views/login.js';
 import { TodayView } from './views/today.js';
-import { RegisterView } from './views/register.js?v=register-tags-20261022';
+import { RegisterView } from './views/register.js?v=barcode-20261023';
 import { OrdersView } from './views/orders.js';
 import { InventoryView } from './views/inventory.js';
 import { AlertsView } from './views/alerts.js';
-import { CatalogView } from './views/catalog.js?v=category-drag-20261022';
+import { CatalogView } from './views/catalog.js?v=barcode-20261023';
 import { StatsView } from './views/stats.js';
 import { SettingsView } from './views/settings.js';
 

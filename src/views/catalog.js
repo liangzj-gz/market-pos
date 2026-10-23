@@ -7,6 +7,7 @@ import { money } from '../util/format.js';
 import { parseProductImport, matrixToTsv, IMPORT_SAMPLE, IMPORT_COLUMNS } from '../domain/import.js';
 import { deriveComboGroups, comboHasGroups, productsInMid } from '../domain/rules.js';
 import { UiSheet } from '../components/index.js';
+import { UiBarcodeScanner } from '../components/barcode-scanner.js';
 
 const EMPTY_PRODUCT = () => ({
   id: null, sku_code: '', name: '', cat1: '', cat2: '',
@@ -37,7 +38,7 @@ const SHEET_FIELDS = ['name', 'list_price', 'cost_price', 'safety_stock', 'sku_c
 
 export const CatalogView = {
   name: 'CatalogView',
-  components: { UiSheet },
+  components: { UiSheet, UiBarcodeScanner },
   data() {
     return {
       tab: 'products',
@@ -46,6 +47,7 @@ export const CatalogView = {
       activeRoot: null,
       activeMid: null,
       prodForm: null,
+      barcodeScanning: false,
       comboTarget: null,
       confirmDelete: null,
       saving: false,
@@ -224,6 +226,7 @@ export const CatalogView = {
     }
   },
   watch: {
+    prodForm() { this.barcodeScanning = false; },
     catManager() { this.finishCategoryDrag(); },
     catTab() { this.finishCategoryDrag(); },
     rootGroups() { this._anchor = null; this.$nextTick(this.refreshCatalogLayout); },
@@ -1196,6 +1199,15 @@ export const CatalogView = {
       <div class="field">
         <label>SKU 编码</label>
         <input class="input input-mono" v-model="prodForm.sku_code" placeholder="留空自动生成">
+      </div>
+      <div class="field span-2">
+        <label>商品条码</label>
+        <div class="barcode-manual">
+          <input class="input input-mono" v-model="prodForm.barcode" maxlength="128" aria-label="商品条码" placeholder="输入包装条码，保留开头的 0" autocomplete="off" autocapitalize="off" spellcheck="false">
+          <button class="btn btn-sm" @click="barcodeScanning = !barcodeScanning">{{ barcodeScanning ? '收起扫码' : '扫码绑定' }}</button>
+        </div>
+        <div class="field-hint">同一个条码只能绑定一个商品；保存后可在开单页扫码加购。</div>
+        <ui-barcode-scanner v-if="barcodeScanning" @scan="prodForm.barcode = $event; barcodeScanning = false" />
       </div>
       <div class="field">
         <label>状态</label>

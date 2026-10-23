@@ -12,13 +12,16 @@ import { comboHasGroups, categoryPath, childrenOf } from '../domain/rules.js';
 import { UiSheet } from '../components/index.js';
 import { UiPaySheet } from '../components/pay-sheet.js';
 import { UiReceipt } from '../components/receipt.js';
+import { UiBarcodeScanner } from '../components/barcode-scanner.js';
+import { matchBarcode } from '../domain/barcode.js';
 
 export const RegisterView = {
   name: 'RegisterView',
-  components: { UiSheet, UiPaySheet, UiReceipt },
+  components: { UiSheet, UiPaySheet, UiReceipt, UiBarcodeScanner },
   data() {
     return {
       paying: false, submitting: false, receipt: null, confirmClear: false,
+      scanning: false, scanFeedback: '', scanTone: 'info',
       comboPick: null, pickGroups: [], activeRoot: null, activeMid: null, pickTab: 'products', tag: 'all'
     };
   },
@@ -139,6 +142,18 @@ export const RegisterView = {
     if (this._categoryRaf) cancelAnimationFrame(this._categoryRaf);
   },
   methods: {
+    openScanner() {
+      this.cartOpen = false;
+      this.scanFeedback = ''; this.scanTone = 'info'; this.scanning = true;
+    },
+    scanProduct(code) {
+      const match = matchBarcode(store.db.products, code);
+      if (match.state !== 'ok') { this.scanFeedback = match.message; this.scanTone = 'warn'; return; }
+      addProduct(match.product);
+      this.scanFeedback = '已加入「' + match.product.name + '」 ' + money(match.product.list_price)
+        + '，该商品已选 ' + this.inCart(match.product) + ' 件';
+      this.scanTone = 'ok';
+    },
     rootDomId(g) { return 'reg-root-' + g.key; },
     midDomId(g) { return 'reg-mid-' + g.key; },
     scrollHost() { return window.matchMedia('(min-width: 900px)').matches ? this.$refs.pickPane : window; },
@@ -374,6 +389,10 @@ export const RegisterView = {
   },
   template: `
 <div class="v-register">
+  <ui-sheet v-if="scanning" title="扫码录入商品" @close="scanning = false">
+    <ui-barcode-scanner :feedback="scanFeedback" :tone="scanTone" @scan="scanProduct" />
+    <template #foot><button class="btn btn-primary grow" @click="scanning = false">完成选品 · 本单 {{ pieces }} 件</button></template>
+  </ui-sheet>
   <div class="reg-layout">
     <!-- 选货 -->
     <section class="reg-pick" ref="pickPane" aria-label="选购商品">
@@ -388,6 +407,7 @@ export const RegisterView = {
         </div>
         <template v-if="pickTab === 'products'">
         <div class="catalog-filter-row reg-filter-row">
+        <div class="reg-search-scan">
         <div class="input-search catalog-search">
           <ui-icon name="search" :size="17" />
           <input class="input" v-model="reg.search" type="search" enterkeyhint="search"
@@ -395,6 +415,8 @@ export const RegisterView = {
           <button v-if="reg.search" class="pick-clear" @click="clearSearch" aria-label="清空搜索">
             <ui-icon name="close" :size="15" />
           </button>
+        </div>
+        <button class="btn btn-sm reg-scan-button" @click="openScanner" aria-label="扫码录入商品">扫码</button>
         </div>
         <div class="chips-scroll catalog-tags" v-if="tags.length" role="group" aria-label="商品标签筛选">
           <button class="chip" :class="{ 'is-on': tag === 'all' }" :aria-pressed="tag === 'all'" @click="tag = 'all'">全部标签</button>
