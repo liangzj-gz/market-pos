@@ -1,11 +1,13 @@
 /* 收款抽屉：新建订单收款 与 待收款订单补收，共用同一套差额校验（R1） */
 import { UiSheet } from './index.js';
+import { UiPaymentCode } from './payment-code.js';
+import { store } from '../data/store.js';
 import { num, r2, money, moneyNum, ADJUST_TYPES, ADJUST_HINT, CHANNEL_TXT } from '../util/format.js';
 import { roundingSuggestions } from '../domain/cart.js';
 
 export const UiPaySheet = {
   name: 'UiPaySheet',
-  components: { UiSheet },
+  components: { UiSheet, UiPaymentCode },
   props: {
     total: { type: Number, required: true },
     pieces: { type: Number, default: 0 },
@@ -26,6 +28,7 @@ export const UiPaySheet = {
     };
   },
   computed: {
+    paymentCode() { return store.db.paymentCodes?.[this.channel] || ''; },
     totalNum() { return num(this.total); },
     paidNum() { return num(this.paid); },
     diff() { return r2(this.paidNum - this.totalNum); },
@@ -104,6 +107,7 @@ export const UiPaySheet = {
       </div>
 
       <div class="field">
+        <ui-payment-code v-if="channel !== 'cash'" :code="paymentCode" :channel="channel" :amount="paidNum" />
         <span class="field-label">实收金额</span>
         <div class="paid-row">
           <span class="paid-cur">¥</span>

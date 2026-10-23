@@ -118,6 +118,9 @@ export function buildSeedDb() {
 
   syncAlerts(db);
   fillProductBarcodes(db);
+  if (PREVIEW) {
+    try { db.paymentCodes = JSON.parse(localStorage.getItem('market-pos-preview-payment-codes') || '{}'); } catch { db.paymentCodes = {}; }
+  }
   return db;
 }
 
@@ -665,6 +668,18 @@ export const demoInfo = computed(() => ({
    动作
    ============================================================ */
 export const actions = {
+  savePaymentCode(channel, image) {
+    return act(() => {
+      if (!['wechat', 'alipay'].includes(channel)) throw new Error('收款渠道不支持');
+      if (image && (!/^data:image\/(jpeg|png|webp);base64,/.test(image) || image.length > 4300000)) throw new Error('收款码图片格式不正确或超过 3MB');
+      const codes = { ...(store.db.paymentCodes || {}), [channel]: image || '' };
+      if (PREVIEW) {
+        try { localStorage.setItem('market-pos-preview-payment-codes', JSON.stringify(codes)); }
+        catch { throw new Error('本机存储空间不足，请选择较小图片'); }
+      }
+      store.db.paymentCodes = codes;
+    }, '收款码已更新');
+  },
   saveCategory(data)      { return act(() => upsertCategory(store.db, data)); },
   moveCategory(id, direction) { return act(() => moveCategory(store.db, id, direction)); },
   moveCategoryTo(id, targetId) { return act(() => moveCategoryTo(store.db, id, targetId)); },

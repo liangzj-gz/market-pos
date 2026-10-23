@@ -32,6 +32,7 @@ const fail = (code, message) => { throw new BizError(code, message); };
 export function createDb() {
   return {
     products: [],
+    paymentCodes: {},
     categories: [],      // { id, name, parent_id, sort } 最多两级
     tags: [],            // 标签词库（字符串）
     combos: [],          // { ...combo, items: [{product_id, quantity}] }

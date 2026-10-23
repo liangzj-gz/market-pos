@@ -1646,3 +1646,17 @@
   .barcode-success { animation: none; }
   .barcode-success-icon path { animation: none; stroke-dashoffset: 0; }
 }
+
+/* 收款码仅作为账户配置保存，不随公开代码发布。 */
+.payment-code { margin: 10px 0; }
+.payment-code-open { display: flex; flex-direction: column; align-items: center; gap: 7px; width: 100%; padding: 10px; background: var(--fill); border-radius: var(--r-sm); }
+.payment-code-open img { display: block; width: auto; max-width: 100%; height: 220px; object-fit: contain; background: white; }
+.payment-code-open span { font-size: var(--fs-xs); color: var(--blue); font-weight: 600; }
+.payment-code-overlay { position: fixed; inset: 0; z-index: 200; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: max(18px, env(safe-area-inset-top)) 16px max(18px, env(safe-area-inset-bottom)); background: var(--bg); }
+.payment-code-large-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; width: min(100%, 680px); flex-shrink: 0; }
+.payment-code-overlay > img { display: block; max-width: 100%; max-height: 68dvh; min-height: 0; object-fit: contain; }
+.payment-code-amount { font-size: var(--fs-lg); }
+.payment-code-amount b { font-size: 28px; margin-left: 6px; }
+.payment-code-settings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 14px; }
+.payment-code-file { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; }
+@media (max-width: 520px) { .payment-code-settings { grid-template-columns: minmax(0, 1fr); } .payment-code-open img { height: 200px; } }

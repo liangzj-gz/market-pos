@@ -1,5 +1,6 @@
 /* 设置：云端账号、数据维护、业务规则对照 */
-import { store, actions, demoInfo, changePassword, logout } from '../data/store.js';
+import { store, actions, demoInfo, changePassword, logout, toast, PREVIEW } from '../data/store.js';
+import { UiPaymentCode, readPaymentCode } from '../components/payment-code.js';
 import { fmtDT } from '../util/format.js';
 
 const RULES = [
@@ -20,14 +21,17 @@ const SYNC_TXT = {
 
 export const SettingsView = {
   name: 'SettingsView',
+  components: { UiPaymentCode },
   data() {
     return {
       confirmReset: false, confirmClear: false, confirmLogout: false,
+      codeUploading: false, codeChannels: [{ key: 'wechat', label: '微信' }, { key: 'alipay', label: '支付宝' }],
       rules: RULES, importing: false,
       showPwd: false, oldPwd: '', newPwd: '', newPwd2: '', pwdBusy: false, pwdError: ''
     };
   },
   computed: {
+    preview() { return PREVIEW; },
     store() { return store; },
     info() { return demoInfo.value; },
     syncText() { return SYNC_TXT[store.sync.state] || '云端同步'; },
@@ -41,6 +45,14 @@ export const SettingsView = {
     }
   },
   methods: {
+    async uploadPaymentCode(channel, event) {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      this.codeUploading = true;
+      try { actions.savePaymentCode(channel, await readPaymentCode(file)); }
+      catch (error) { toast(error.message, 'warn'); }
+      finally { this.codeUploading = false; event.target.value = ''; }
+    },
     fmtDT,
     reset() { actions.resetDemo(); this.confirmReset = false; },
     clear() { actions.clearAll(); this.confirmClear = false; },
@@ -80,6 +92,23 @@ export const SettingsView = {
   <div class="page-head">
     <div class="page-title">设置</div>
     <div class="page-sub">账号、同步与数据维护</div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h3>收款码</h3></div>
+    <div class="card-body">
+      <p class="small muted">选择收款渠道时自动展示对应收款码。请上传完整、清晰的原图。</p>
+      <p class="field-hint">{{ preview ? '预览模式仅保存在当前浏览器，换设备需重新上传。' : '收款码随当前账户数据同步，换设备登录同一账户即可读取。' }}</p>
+      <div class="payment-code-settings">
+        <section v-for="c in codeChannels" :key="c.key">
+          <h4>{{ c.label }}收款码</h4>
+          <ui-payment-code :channel="c.key" :code="store.db.paymentCodes?.[c.key] || ''" />
+          <label class="btn btn-sm">{{ codeUploading ? '正在保存…' : '上传 / 更换' }}
+            <input type="file" accept="image/png,image/jpeg,image/webp" :aria-label="'上传' + c.label + '收款码'" :disabled="codeUploading" @change="uploadPaymentCode(c.key, $event)" class="payment-code-file">
+          </label>
+        </section>
+      </div>
+    </div>
   </div>
 
   <div class="card">
