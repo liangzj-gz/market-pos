@@ -1660,3 +1660,23 @@
 .payment-code-settings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 14px; }
 .payment-code-file { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; }
 @media (max-width: 520px) { .payment-code-settings { grid-template-columns: minmax(0, 1fr); } .payment-code-open img { height: 200px; } }
+
+/* 平板横屏与桌面：右上常驻扫码，本单明细在下方独立滚动。 */
+.reg-scan-dock { padding: 10px 12px; border-bottom: 1px solid var(--stroke); flex-shrink: 0; }
+.reg-scan-dock-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: var(--fs-sm); }
+.reg-scan-dock-head span { color: var(--label-3); font-size: 10.5px; }
+.reg-dock-scanner { margin-top: 7px; }
+.reg-dock-scanner .barcode-camera { height: clamp(110px, 17dvh, 180px); max-height: none; aspect-ratio: auto; }
+.reg-dock-scanner .barcode-camera-hint { padding: 12px; font-size: var(--fs-xs); }
+.reg-dock-scanner .barcode-camera-actions { gap: 5px; margin-top: 6px; }
+.reg-dock-scanner .barcode-camera-actions .btn, .reg-dock-scanner .barcode-camera-actions .select { min-height: 28px; padding: 3px 6px; font-size: 11px; }
+.reg-dock-scanner .barcode-message { font-size: 11px; line-height: 1.4; margin: 6px 0 0; }
+.reg-dock-scanner > .field-hint { display: none; }
+.reg-dock-scanner .barcode-manual { margin-top: 7px; gap: 5px; }
+.reg-dock-scanner .barcode-manual .input, .reg-dock-scanner .barcode-manual .btn { min-height: 30px; padding: 4px 8px; font-size: var(--fs-xs); }
+.reg-dock-scanner .barcode-success-icon { width: 52px; height: 52px; }
+.reg-dock-scanner .barcode-success strong { font-size: var(--fs-sm); }
+@media (min-width: 900px) {
+  .v-register .cart-panel { height: calc(100dvh - 60px); }
+  .v-register .cart-body { flex: 1; min-height: 0; }
+}

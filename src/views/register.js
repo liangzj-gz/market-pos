@@ -22,6 +22,7 @@ export const RegisterView = {
     return {
       paying: false, submitting: false, receipt: null, confirmClear: false,
       scanning: false, scanFeedback: '', scanTone: 'info', scanSuccess: 0,
+      dockScanner: window.matchMedia('(min-width: 900px)').matches,
       comboPick: null, pickGroups: [], activeRoot: null, activeMid: null, pickTab: 'products', tag: 'all'
     };
   },
@@ -113,6 +114,9 @@ export const RegisterView = {
     activeMid() { this.$nextTick(this.revealCategoryAnchors); }
   },
   mounted() {
+    this._scannerMedia = window.matchMedia('(min-width: 900px)');
+    this._scannerLayout = event => { this.scanning = false; this.dockScanner = event.matches; };
+    this._scannerMedia.addEventListener('change', this._scannerLayout);
     this._categoryScroll = () => {
       if (this._categoryRaf) return;
       this._categoryRaf = requestAnimationFrame(() => {
@@ -132,6 +136,7 @@ export const RegisterView = {
     this.$nextTick(this.refreshCategories);
   },
   beforeUnmount() {
+    this._scannerMedia.removeEventListener('change', this._scannerLayout);
     window.removeEventListener('scroll', this._categoryScroll);
     this.$refs.pickPane.removeEventListener('scroll', this._categoryScroll);
     window.removeEventListener('wheel', this._cancelAnchor);
@@ -143,6 +148,11 @@ export const RegisterView = {
   },
   methods: {
     openScanner() {
+      if (this.dockScanner) {
+        const scanner = this.$refs.dockedScanner;
+        if (scanner && !scanner.running && !scanner.starting) scanner.start();
+        return;
+      }
       this.cartOpen = false;
       this.scanFeedback = ''; this.scanTone = 'info'; this.scanning = true;
     },
@@ -508,6 +518,12 @@ export const RegisterView = {
     <button v-if="cartOpen" class="reg-cart-backdrop" @click="cartOpen = false" aria-label="关闭本单遮罩"></button>
     <aside class="reg-cart" :class="{ 'is-open': cartOpen }" @keydown.esc="cartOpen = false">
       <div class="cart-panel">
+        <section v-if="dockScanner" class="reg-scan-dock" aria-label="常驻扫码区">
+          <div class="reg-scan-dock-head"><b>扫码选品</b><span>扫描后直接加入本单</span></div>
+          <ui-barcode-scanner ref="dockedScanner" class="reg-dock-scanner"
+            :feedback="scanFeedback" :tone="scanTone" :success-key="scanSuccess"
+            :active="!paying && !receipt && !comboPick && !confirmClear" @scan="scanProduct" />
+        </section>
         <div class="cart-head">
           <h3><ui-icon name="register" :size="16" /> 本单</h3>
           <span class="mono small">{{ lines }} 行 · {{ pieces }} 件</span>

@@ -29,3 +29,7 @@
 本地按需加载 `@zxing/browser` 0.1.5 的 UMD 包；包含 ZXing 解码逻辑，无运行时 CDN 请求。许可证见 `assets/vendor/zxing-browser-LICENSE.txt` 与 `assets/vendor/zxing-library-LICENSE.txt`。
 
 条形码生成使用本地按需加载的 JsBarcode 3.12.1 Code 128 包，许可证见 `assets/vendor/jsbarcode-LICENSE.txt`。MP 条码为店内管理用途，不是申请的零售商品 EAN 编码。
+
+## 平板常驻扫码
+
+视口宽度至少 900px 时，开单右侧上方常驻扫码，下方本单明细独立滚动，金额与收款按钮固定底部；适用于平板横屏及桌面。窄屏保留原扫码抽屉。跨越断点时销毁旧扫码实例，避免两个摄像头同时运行。收款、回执、套餐选品、清空确认窗口打开时停止常驻摄像头并禁止输入条码，关闭后自动重新启动。

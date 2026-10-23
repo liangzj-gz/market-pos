@@ -17,17 +17,17 @@ function loadDecoder() {
 
 export const UiBarcodeScanner = {
   name: 'UiBarcodeScanner',
-  props: { feedback: { type: String, default: '' }, tone: { type: String, default: 'info' }, successKey: { type: Number, default: 0 } },
+  props: { feedback: { type: String, default: '' }, tone: { type: String, default: 'info' }, successKey: { type: Number, default: 0 }, active: { type: Boolean, default: true } },
   emits: ['scan'],
   data() { return { manual: '', starting: false, running: false, confirming: false, error: '', cameras: [], deviceId: '' }; },
-  watch: { successKey() { this.showSuccess(); } },
+  watch: { successKey() { this.showSuccess(); }, active(value) { if (value) this.start(); else this.stop(); } },
   mounted() {
     this._generation = 0;
     this._visibility = () => { if (document.hidden) this.stop(); };
     document.addEventListener('visibilitychange', this._visibility);
     this._pagehide = () => this.stop();
     window.addEventListener('pagehide', this._pagehide);
-    this.start();
+    if (this.active !== false) this.start();
   },
   beforeUnmount() {
     this.stop();
@@ -50,6 +50,7 @@ export const UiBarcodeScanner = {
       this.starting = false; this.running = false;
     },
     async start() {
+      if (this.active === false) return;
       this.stop(); this.error = '';
       if (!window.isSecureContext) { this.error = '摄像头需要 HTTPS 访问，请使用线上地址；也可在下方输入条码。'; return; }
       if (!navigator.mediaDevices?.getUserMedia) { this.error = '当前浏览器无法打开摄像头，请使用 Safari 或 Chrome，或手动输入条码。'; return; }
@@ -91,7 +92,7 @@ export const UiBarcodeScanner = {
       } finally { if (current()) this.starting = false; }
     },
     submitManual() {
-      if (this.confirming) return;
+      if (this.confirming || this.active === false) return;
       const code = normalizeBarcode(this.manual);
       if (!code) return;
       this.$emit('scan', code); this.manual = '';
@@ -109,7 +110,7 @@ export const UiBarcodeScanner = {
       </div>
     </div>
     <div class="barcode-camera-actions">
-      <button class="btn btn-sm btn-primary" v-if="!running && !starting" @click="start">开启摄像头</button>
+      <button class="btn btn-sm btn-primary" v-if="!running && !starting" @click="start" :disabled="!active">开启摄像头</button>
       <button class="btn btn-sm" v-else @click="stop">{{ starting ? '取消启动' : '暂停扫码' }}</button>
       <select v-if="cameras.length > 1 && !starting" class="select" v-model="deviceId" @change="start" aria-label="选择摄像头">
         <option value="">自动选择后置摄像头</option>
@@ -121,7 +122,7 @@ export const UiBarcodeScanner = {
     <p class="field-hint">同一条码停留在镜头中只录入一次；移开约 1 秒后重新扫入可再次录入。</p>
     <form class="barcode-manual" @submit.prevent="submitManual">
       <input class="input input-mono" v-model="manual" placeholder="也可手动输入条码" aria-label="手动输入商品条码" autocomplete="off" autocapitalize="off" spellcheck="false">
-      <button class="btn" type="submit" :disabled="confirming || !manual.trim()">确认</button>
+      <button class="btn" type="submit" :disabled="!active || confirming || !manual.trim()">确认</button>
     </form>
   </div>`
 };
