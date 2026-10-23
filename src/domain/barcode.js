@@ -1,6 +1,21 @@
 /* 条码按字符串精确匹配，保留前导零。 */
 export const normalizeBarcode = value => String(value ?? '').trim();
 
+export function generateProductBarcode(products, id) {
+  const base = 'MP' + String(id).padStart(8, '0');
+  let code = base, suffix = 0;
+  while (products.some(p => barcodesEqual(p.barcode, code))) code = base + '-' + (++suffix);
+  return code;
+}
+
+export function fillProductBarcodes(db) {
+  let count = 0;
+  db.products.forEach(p => {
+    if (!normalizeBarcode(p.barcode)) { p.barcode = generateProductBarcode(db.products, p.id); count++; }
+  });
+  return count;
+}
+
 // UPC-A 与前补 0 的 EAN-13 表示同一商品；仅在校验位正确时兼容这两种解码结果。
 export function barcodesEqual(left, right) {
   const a = normalizeBarcode(left), b = normalizeBarcode(right);

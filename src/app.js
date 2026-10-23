@@ -8,7 +8,7 @@ import { RegisterView } from './views/register.js?v=barcode-20261023';
 import { OrdersView } from './views/orders.js';
 import { InventoryView } from './views/inventory.js';
 import { AlertsView } from './views/alerts.js';
-import { CatalogView } from './views/catalog.js?v=barcode-20261023';
+import { CatalogView } from './views/catalog.js?v=auto-barcode-20261023';
 import { StatsView } from './views/stats.js';
 import { SettingsView } from './views/settings.js';
 

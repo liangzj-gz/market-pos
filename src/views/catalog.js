@@ -8,6 +8,7 @@ import { parseProductImport, matrixToTsv, IMPORT_SAMPLE, IMPORT_COLUMNS } from '
 import { deriveComboGroups, comboHasGroups, productsInMid } from '../domain/rules.js';
 import { UiSheet } from '../components/index.js';
 import { UiBarcodeScanner } from '../components/barcode-scanner.js';
+import { UiProductBarcode } from '../components/product-barcode.js';
 
 const EMPTY_PRODUCT = () => ({
   id: null, sku_code: '', name: '', cat1: '', cat2: '',
@@ -38,7 +39,7 @@ const SHEET_FIELDS = ['name', 'list_price', 'cost_price', 'safety_stock', 'sku_c
 
 export const CatalogView = {
   name: 'CatalogView',
-  components: { UiSheet, UiBarcodeScanner },
+  components: { UiSheet, UiBarcodeScanner, UiProductBarcode },
   data() {
     return {
       tab: 'products',
@@ -1206,7 +1207,8 @@ export const CatalogView = {
           <input class="input input-mono" v-model="prodForm.barcode" maxlength="128" aria-label="商品条码" placeholder="输入包装条码，保留开头的 0" autocomplete="off" autocapitalize="off" spellcheck="false">
           <button class="btn btn-sm" @click="barcodeScanning = !barcodeScanning">{{ barcodeScanning ? '收起扫码' : '扫码绑定' }}</button>
         </div>
-        <div class="field-hint">同一个条码只能绑定一个商品；保存后可在开单页扫码加购。</div>
+        <div class="field-hint">留空自动生成；已有条码会保留，也可手动绑定包装条码。保存后可扫码开单。</div>
+        <ui-product-barcode :value="prodForm.barcode || ''" />
         <ui-barcode-scanner v-if="barcodeScanning" @scan="prodForm.barcode = $event; barcodeScanning = false" />
       </div>
       <div class="field">

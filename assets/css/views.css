@@ -1625,3 +1625,6 @@
 @media (max-width: 899px) {
   .reg-search-scan { flex: none; width: 100%; }
 }
+.product-barcode { margin-top: 8px; }
+.product-barcode-preview { background: white; border: 1px solid var(--stroke); border-radius: var(--r-sm); overflow-x: auto; padding: 5px; margin-bottom: 7px; }
+.product-barcode-preview svg { display: block; max-width: 100%; height: auto; margin: 0 auto; }

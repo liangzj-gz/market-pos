@@ -23,6 +23,7 @@ import {
 } from '../domain/rules.js';
 import { num, r2, int, ymd, startOfDay, addDays, daysBetween } from '../util/format.js';
 import { matchCategoryPath } from '../domain/import.js';
+import { fillProductBarcodes } from '../domain/barcode.js';
 import { SEED_PRODUCTS, SEED_COMBOS, SEED_ORDERS, SEED_OPENING_AT, SEED_TAGS } from './seed.js';
 import {
   cloudAvailable, loadState, saveState, getSession, phoneOf,
@@ -116,6 +117,7 @@ export function buildSeedDb() {
   });
 
   syncAlerts(db);
+  fillProductBarcodes(db);
   return db;
 }
 
@@ -141,6 +143,7 @@ function migrate(db) {
   });
   buildCategoryTree(db);
   collapseCategoryDepth(db);
+  fillProductBarcodes(db);
   db.combos.forEach(c => {
     if (!Array.isArray(c.items)) c.items = [];
     if (!Array.isArray(c.groups)) c.groups = [];
@@ -281,11 +284,13 @@ async function pullFromCloud() {
     await flushSave();
     return true;
   }
+  const needsBarcodes = (res.doc.products || []).some(p => !String(p.barcode || '').trim());
   store.db = migrate(res.doc);
   store.version = res.version;
   store.savedAt = new Date().toISOString();
   store.sync.state = 'saved';
   store.sync.error = '';
+  if (needsBarcodes) scheduleSave();
   return true;
 }
 

@@ -16,7 +16,7 @@
    ============================================================ */
 
 import { num, r2, int, ymd, pad } from '../util/format.js';
-import { barcodesEqual } from './barcode.js';
+import { barcodesEqual, generateProductBarcode } from './barcode.js';
 
 /* ---------- 错误 ---------- */
 export class BizError extends Error {
@@ -793,6 +793,10 @@ export function upsertProduct(db, data) {
     status: data.status === 'off_sale' ? 'off_sale' : 'on_sale'
   };
   if (!payload.name) fail('NAME_REQUIRED', '请填写商品名称');
+  if (!payload.barcode) {
+    payload.barcode = (data.id && productById(db, data.id)?.barcode)
+      || generateProductBarcode(db.products, data.id || db.seq.product || 1);
+  }
   if (payload.barcode && payload.barcode.length > 128) fail('BARCODE_LENGTH', '条码请控制在 128 个字符以内');
   if (payload.barcode && db.products.some(p => p.id !== data.id && barcodesEqual(p.barcode, payload.barcode))) {
     fail('BARCODE_DUP', '该条码已绑定其他商品，请勿重复绑定');
