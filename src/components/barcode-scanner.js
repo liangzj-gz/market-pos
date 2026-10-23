@@ -26,6 +26,7 @@ export const UiBarcodeScanner = {
     document.addEventListener('visibilitychange', this._visibility);
     this._pagehide = () => this.stop();
     window.addEventListener('pagehide', this._pagehide);
+    this.start();
   },
   beforeUnmount() {
     this.stop();

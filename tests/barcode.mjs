@@ -96,3 +96,15 @@ const originalCode = generated.barcode;
 upsertProduct(fresh, { ...generated, barcode: '' });
 assert.equal(generated.barcode, originalCode);
 console.log('自动生成、旧数据补齐、碰撞避让、幂等和保留既有条码检查通过');
+
+let autoStarts = 0, requestedVideo;
+globalThis.document = { addEventListener() {} };
+window.addEventListener = () => {};
+scanner.mounted.call({ start() { autoStarts++; } });
+assert.equal(autoStarts, 1);
+setMedia({ getUserMedia: async constraints => { requestedVideo = constraints.video; return { getTracks: () => [{ stop() {} }] }; }, enumerateDevices: async () => [] });
+instance = makeScanner();
+await instance.start();
+assert.equal(requestedVideo.facingMode.ideal, 'environment');
+instance.stop();
+console.log('打开扫码自动启动及默认后置镜头约束检查通过');
