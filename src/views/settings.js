@@ -119,7 +119,7 @@ export const SettingsView = {
     <div class="card-body">
       <div class="info-rows">
         <div class="info-row"><span>登录手机号</span><b class="mono">{{ phoneText }}</b></div>
-        <div class="info-row"><span>云端版本</span><b class="mono">v{{ info.version }}</b></div>
+        <div class="info-row"><span>云端存储</span><b class="mono">{{ info.syncMode }}</b></div>
       </div>
       <p class="small" style="line-height:1.7;color:var(--label-2);margin-top:12px">
         商品、订单、库存全部存在云端，按手机号隔离。改完会自动同步，

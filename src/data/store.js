@@ -1,12 +1,14 @@
 /* ============================================================
-   数据仓库（云端版）
+   数据仓库（云端分表版 v2）
 
-   一份数据对应一个登录手机号，整份 JSON 存进云端 app_state 一行里。
-   云端只负责按账号存取；所有业务规则仍在 rules.js 前端执行，
-   act() 依旧是「一次同步写入 + 校验失败即抛 BizError」，
-   写完 300ms 防抖推上云，版本对不上就提示冲突并刷新。
+   一份数据对应一个登录手机号。v2 起云端按物理分表持久化：
+   八张行表（商品/套餐/分类/订单/明细/调整/流水/预警）+ meta 单行，
+   业务规则仍在 rules.js 前端执行；保存时对「云端快照」做 diff，
+   只上传新增和变化的行、删除消失的行，请求体与历史数据量无关。
+   多设备同时用：id 通过服务端原子申领区间分配，永不撞号。
 
-   换设备登录同一手机号看到的是同一份数据。
+   ?sync=v1 可强制回退旧的「整份 JSON 一行」模式（应急用），
+   旧 app_state 行在迁移后仍保留，作为回滚数据源。
    ============================================================ */
 
 import {
@@ -28,8 +30,13 @@ import { SEED_PRODUCTS, SEED_COMBOS, SEED_ORDERS, SEED_OPENING_AT, SEED_TAGS } f
 import {
   cloudAvailable, loadState, saveState, getSession, phoneOf,
   signInWithPassword, sendOtp, verifyOtp, signOut as cloudSignOut,
-  changePassword as changePasswordRemote
+  changePassword as changePasswordRemote,
+  loadAppData, saveTableRows, saveMetaDoc, claimIdRange
 } from './cloud.js';
+import {
+  SYNC_TABLES, SEQ_KEYS,
+  buildTableSnapshot, buildMetaSnapshot, metaPart, diffTable, rowsToRecords
+} from './sync.js';
 
 const { reactive, computed } = window.Vue;
 
@@ -37,6 +44,19 @@ const { reactive, computed } = window.Vue;
    不调用任何云端接口，用于 iPad / 手机等非同源环境的本地调试 */
 export const PREVIEW = typeof location !== 'undefined' &&
   new URLSearchParams(location.search).has('preview');
+
+/* 应急开关：?sync=v1 强制走旧的整份 JSON 模式（读写 app_state 行） */
+const FORCE_V1 = typeof location !== 'undefined' &&
+  new URLSearchParams(location.search).get('sync') === 'v1';
+
+/* v2 分表同步的运行时状态（不进 store，避免被当成业务数据） */
+const CLAIM_CHUNK = 1000;   // 每次申领的 id 区间长度
+const CLAIM_MARGIN = 200;   // 剩余量低于此值时自动续领
+const v2 = {
+  ready: false,             // 登录并完成加载/迁移后为 true
+  snap: null,               // { tables: {key: Map(id->指纹)}, meta: 指纹 }，代表云端现状
+  ranges: {}                // seqKey -> { start, end } 本设备申领到的 id 区间
+};
 
 /* 只记「上次登录的手机号」这一条 UI 偏好，绝不存业务数据 */
 const PHONE_KEY = 'stall.cloud.phone.v1';
@@ -211,7 +231,8 @@ export function toast(message, kind = 'info') {
 }
 
 /* ============================================================
-   云端保存：300ms 防抖 → 串行提交 → 冲突刷新 / 失败重试
+   云端保存：300ms 防抖 → 串行提交 → 失败重试
+   v1 = 整份 JSON 一行（?sync=v1 应急）；v2 = 分表增量（默认）
    ============================================================ */
 const SAVE_DEBOUNCE = 300;
 const RETRY_DELAY = 5000;
@@ -237,27 +258,10 @@ async function flushSave() {
   if (saving) { dirtyAgain = true; return; }
   if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
   saving = true;
-  store.sync.state = 'saving';
   try {
-    const res = await saveState(store.version, toPlain(store.db));
-    if (res.ok && !res.conflict) {
-      store.version = res.version;
-      store.savedAt = new Date().toISOString();
-      store.sync.state = 'saved';
-      store.sync.error = '';
-      retryLeft = MAX_RETRY;
-    } else if (res.ok && res.conflict) {
-      store.sync.state = 'conflict';
-      await pullFromCloud();
-      toast('数据已在其他设备更新，已刷新为最新，请重试刚才的操作', 'warn');
-    } else {
-      store.sync.state = 'unsynced';
-      store.sync.error = res.error || '保存失败';
-      if (!retryTimer && retryLeft > 0) {
-        retryLeft -= 1;
-        retryTimer = setTimeout(() => { retryTimer = null; flushSave(); }, RETRY_DELAY);
-      }
-    }
+    if (FORCE_V1) await flushSaveV1();
+    else if (v2.ready) await flushSaveV2();
+    /* v2 未就绪（登录后加载失败）时不落盘：防止旧 app_state 数据覆盖云端 */
   } finally {
     saving = false;
     if (dirtyAgain) { dirtyAgain = false; flushSave(); }
@@ -271,8 +275,185 @@ export function retrySave() {
   return flushSave();
 }
 
-/* 把云端最新的整份数据换进来；没有行就用 29 笔历史订单初始化 */
+/* ---------- v1：整份 JSON 一行（应急回退用） ---------- */
+async function flushSaveV1() {
+  store.sync.state = 'saving';
+  const res = await saveState(store.version, toPlain(store.db));
+  if (res.ok && !res.conflict) {
+    store.version = res.version;
+    store.savedAt = new Date().toISOString();
+    store.sync.state = 'saved';
+    store.sync.error = '';
+    retryLeft = MAX_RETRY;
+  } else if (res.ok && res.conflict) {
+    store.sync.state = 'conflict';
+    await pullFromCloud();
+    toast('数据已在其他设备更新，已刷新为最新，请重试刚才的操作', 'warn');
+  } else {
+    store.sync.state = 'unsynced';
+    store.sync.error = res.error || '保存失败';
+    if (!retryTimer && retryLeft > 0) {
+      retryLeft -= 1;
+      retryTimer = setTimeout(() => { retryTimer = null; flushSave(); }, RETRY_DELAY);
+    }
+  }
+}
+
+/* ---------- v2 公共：id 区间申领 ---------- */
+/* 给一个 seq 键确保剩余可用 id 足够；force 时无条件重新申领 */
+export async function ensureRanges(force) {
+  const seq = store.db.seq || {};
+  const jobs = [];
+  for (const key of SEQ_KEYS) {
+    const used = Number(seq[key]);
+    const cursor = Number.isFinite(used) ? used : 1;
+    const range = v2.ranges[key];
+    const need = force || !range || cursor < range.start || (range.end - cursor) < CLAIM_MARGIN;
+    if (!need) continue;
+    const floor = Math.max(0, cursor - 1);
+    jobs.push(claimIdRange(key, floor, CLAIM_CHUNK).then(res => {
+      if (!res.ok) { store.sync.error = res.error || '申领编号失败'; return; }
+      const start = res.base - CLAIM_CHUNK + 1;
+      if (!Number.isFinite(seq[key]) || seq[key] < start) seq[key] = start;
+      v2.ranges[key] = { start, end: res.base };
+    }));
+  }
+  await Promise.all(jobs);
+}
+
+/* ---------- v2 公共：快照与装配 ---------- */
+function takeSnapshot(db) {
+  const tables = {};
+  SYNC_TABLES.forEach(key => { tables[key] = buildTableSnapshot(db[key]); });
+  return { tables, meta: buildMetaSnapshot(db) };
+}
+
+/* 把 load_app_data 的返回装配成本地 db（返回的是普通对象，非响应式） */
+function assembleDb(d) {
+  const db = createDb();
+  SYNC_TABLES.forEach(key => { db[key] = rowsToRecords(d[key]); });
+  const meta = d.meta || {};
+  db.tags = Array.isArray(meta.tags) ? meta.tags : [];
+  db.balances = meta.balances && typeof meta.balances === 'object' ? meta.balances : {};
+  db.paymentCodes = meta.paymentCodes && typeof meta.paymentCodes === 'object' ? meta.paymentCodes : {};
+  return migrate(db);
+}
+
+/* 首次迁移 / 全新账号：把整份 db 全量写进分表（meta 最后写，作为迁移完成标记） */
+async function pushAllTables(db) {
+  for (const key of SYNC_TABLES) {
+    const res = await saveTableRows(key, JSON.parse(JSON.stringify(db[key])), []);
+    if (!res.ok) { store.sync.error = res.error || '保存到云端失败'; return false; }
+  }
+  const res = await saveMetaDoc({ schema_version: 2, ...metaPart(db) });
+  if (!res.ok) { store.sync.error = res.error || '保存到云端失败'; return false; }
+  return true;
+}
+
+/* ---------- v2 主保存：按表 diff 增量上传 ---------- */
+async function flushSaveV2() {
+  store.sync.state = 'saving';
+  /* 先拍平：后续 diff 与上传都用同一份普通对象，
+     保存期间的新改动不进本轮，留给下一轮 diff（快照语义保证不丢） */
+  const db2 = toPlain(store.db);
+  await ensureRanges(false);
+
+  let touched = false;
+  let failed = false;
+  for (const key of SYNC_TABLES) {
+    const { rows, deleteIds } = diffTable(db2[key], v2.snap.tables[key]);
+    if (!rows.length && !deleteIds.length) continue;
+    touched = true;
+    const res = await saveTableRows(key, rows.map(r => r.rec), deleteIds);
+    if (res.ok) {
+      rows.forEach(({ rec, fp }) => v2.snap.tables[key].set(rec.id, fp));
+      deleteIds.forEach(id => v2.snap.tables[key].delete(id));
+    } else {
+      failed = true;
+      store.sync.error = res.error || '保存到云端失败';
+    }
+  }
+  const metaFp = buildMetaSnapshot(db2);
+  if (metaFp !== v2.snap.meta) {
+    touched = true;
+    const res = await saveMetaDoc({ schema_version: 2, ...metaPart(db2) });
+    if (res.ok) v2.snap.meta = metaFp;
+    else { failed = true; store.sync.error = res.error || '保存到云端失败'; }
+  }
+
+  if (touched && !failed) {
+    store.sync.state = 'saved';
+    store.sync.error = '';
+    store.savedAt = new Date().toISOString();
+    retryLeft = MAX_RETRY;
+  } else if (failed) {
+    store.sync.state = 'unsynced';
+    if (!retryTimer && retryLeft > 0) {
+      retryLeft -= 1;
+      retryTimer = setTimeout(() => { retryTimer = null; flushSave(); }, RETRY_DELAY);
+    }
+  } else {
+    store.sync.state = 'saved';
+  }
+}
+
+/* ============================================================
+   登录后的数据加载
+   v2：load_app_data 一次拉全量 → 已迁移直接装配；
+       未迁移则读旧 app_state 行迁移进分表（原行保留作回滚）；
+       全新账号用种子数据初始化。
+   v1（?sync=v1 应急）：原样读写 app_state 一行。
+   ============================================================ */
+function markV2Synced() {
+  v2.ready = true;
+  store.version = null;
+  store.savedAt = new Date().toISOString();
+  store.sync.state = 'saved';
+  store.sync.error = '';
+}
+
+function loadFailed(error) {
+  store.sync.state = 'unsynced';
+  store.sync.error = error || '读取云端数据失败';
+  return false;
+}
+
 async function pullFromCloud() {
+  if (FORCE_V1) return pullFromCloudV1();
+  const res = await loadAppData();
+  if (!res.ok) return loadFailed(res.error);
+
+  const d = res.data;
+  if (d && d.meta && d.meta.schema_version === 2) {
+    store.db = assembleDb(d);
+    await ensureRanges(true);
+    if (store.sync.error) return loadFailed(store.sync.error);
+    v2.snap = takeSnapshot(store.db);
+    markV2Synced();
+    return true;
+  }
+
+  /* 未迁移：读旧整份数据（或全新账号灌种子） */
+  const legacy = await loadState();
+  if (!legacy.ok) return loadFailed(legacy.error);
+  if (legacy.exists) {
+    store.db = migrate(legacy.doc);
+    store.version = legacy.version;
+  } else {
+    store.db = buildSeedDb();
+    store.version = 0;
+  }
+  await ensureRanges(true);
+  if (store.sync.error) return loadFailed(store.sync.error);
+  const ok = await pushAllTables(store.db);
+  if (!ok) return loadFailed(store.sync.error || '迁移到分表存储失败');
+  v2.snap = takeSnapshot(store.db);
+  markV2Synced();
+  return true;
+}
+
+/* ---------- v1 应急加载：整份 JSON 一行 ---------- */
+async function pullFromCloudV1() {
   const res = await loadState();
   if (!res.ok) {
     store.sync.state = 'unsynced';
@@ -394,6 +575,9 @@ export async function logout() {
   store.version = 0;
   store.savedAt = null;
   store.loaded = false;
+  v2.ready = false;
+  v2.snap = null;
+  v2.ranges = {};
   store.auth = { status: 'anon', phone: '', error: '' };
   store.sync = { state: 'idle', error: '' };
   store.ui.view = 'today';
@@ -659,6 +843,7 @@ export const demoInfo = computed(() => ({
   alerts: store.db.alerts.filter(a => a.status === 'open').length,
   savedAt: store.savedAt,
   version: store.version,
+  syncMode: v2.ready ? '分表 v2' : (FORCE_V1 ? '整份 v1' : '待加载'),
   phone: store.auth.phone,
   syncState: store.sync.state,
   syncError: store.sync.error
