@@ -23,7 +23,7 @@ import {
   deleteCategory as deleteCategoryRule,
   addTag as addTagRule, renameTag as renameTagRule, deleteTag as deleteTagRule
 } from '../domain/rules.js';
-import { num, r2, int, ymd, startOfDay, addDays, daysBetween } from '../util/format.js';
+import { num, r2, int, ymd, pad, startOfDay, addDays, daysBetween } from '../util/format.js';
 import { matchCategoryPath } from '../domain/import.js';
 import { fillProductBarcodes } from '../domain/barcode.js';
 import { SEED_PRODUCTS, SEED_COMBOS, SEED_ORDERS, SEED_OPENING_AT, SEED_TAGS } from './seed.js';
@@ -149,6 +149,63 @@ export function buildSeedDb() {
    ============================================================ */
 /* reactive 代理不能直接丢给 JSON 序列化，先拍平成纯对象 */
 function toPlain(db) { return JSON.parse(JSON.stringify(db)); }
+
+/* ============================================================
+   CSV 导出（给 Excel 看账用；备份/恢复仍然只用 JSON）
+   buildCsv 是纯函数：传 plain db，返回 { filename, label, text }，
+   便于 node 直接断言；写文件由 exportCsv 动作负责。
+   ============================================================ */
+const CSV_KINDS = {
+  orders:   { label: '订单',     header: ['订单号', '状态', '下单时间', '收款时间', '收款渠道', '件数', '应收', '实收', '备注'] },
+  items:    { label: '订单明细', header: ['订单号', '下单时间', '类型', '商品', '数量', '单价', '行金额', '赠品'] },
+  products: { label: '商品库存', header: ['ID', '商品名', '分类', '系列', '单位', '售价', '成本', '安全库存', '当前库存', '状态', '条码'] }
+};
+const csvEsc = v => {
+  const s = v === null || v === undefined ? '' : String(v);
+  return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+};
+const csvLocal = iso => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+const CSV_CHANNEL = { wechat: '微信', alipay: '支付宝', cash: '现金' };
+const CSV_STATUS = { pending: '待收款', paid: '已收款', cancelled: '已冲销' };
+
+export function buildCsv(kind, db) {
+  const kindCfg = CSV_KINDS[kind];
+  if (!kindCfg || !db) return null;
+  let rows;
+  if (kind === 'orders') {
+    rows = (db.orders || []).slice().sort((a, b) => a.id - b.id).map(o => [
+      o.order_no, CSV_STATUS[o.status] || o.status, csvLocal(o.created_at), csvLocal(o.paid_at),
+      CSV_CHANNEL[o.channel] || '', o.item_count, o.total_amount,
+      o.status === 'paid' ? o.paid_amount : '', o.note || ''
+    ]);
+  } else if (kind === 'items') {
+    const byId = new Map((db.orders || []).map(o => [o.id, o]));
+    rows = (db.orderItems || []).slice().sort((a, b) => a.id - b.id).map(it => {
+      const o = byId.get(it.order_id) || {};
+      return [
+        o.order_no !== undefined ? o.order_no : it.order_id, csvLocal(o.created_at),
+        it.item_type === 'combo' ? '套餐' : '商品', it.product_name,
+        it.quantity, it.unit_price, it.line_amount, it.is_gift ? '是' : ''
+      ];
+    });
+  } else {
+    rows = (db.products || []).slice().sort((a, b) => a.id - b.id).map(p => [
+      p.id, p.name, p.category || '', p.series || '', p.unit || '件',
+      p.list_price, p.cost_price === null || p.cost_price === undefined ? '' : p.cost_price,
+      p.safety_stock === null || p.safety_stock === undefined ? '' : p.safety_stock,
+      db.balances && db.balances[p.id] !== undefined ? db.balances[p.id] : '',
+      p.status === 'off_sale' ? '停售' : '在售', p.barcode || ''
+    ]);
+  }
+  /* BOM 头：Excel 直接打开中文不乱码；CRLF 兼容 Excel 换行 */
+  const text = '\uFEFF' + [kindCfg.header, ...rows].map(r => r.map(csvEsc).join(',')).join('\r\n');
+  return { filename: `摆摊订单管家-${kindCfg.label}-${ymd(new Date())}.csv`, label: kindCfg.label, text };
+}
 
 /* 老数据补字段：只补分类树与标签，不动订单和库存 */
 function migrate(db) {
@@ -947,6 +1004,17 @@ export const actions = {
     a.download = '摆摊订单管家-数据-' + ymd(new Date()) + '.json';
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 2000);
+  },
+  exportCsv(kind) {
+    const file = buildCsv(kind, toPlain(store.db));
+    if (!file) { toast('未知的导出类型', 'warn'); return; }
+    const url = URL.createObjectURL(new Blob([file.text], { type: 'text/csv;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = file.filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    toast(`已导出 ${file.label} CSV，可用 Excel 打开`, 'ok');
   },
   importJson(file) {
     return new Promise(resolve => {

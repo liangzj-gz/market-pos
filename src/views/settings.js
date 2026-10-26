@@ -58,6 +58,7 @@ export const SettingsView = {
     clear() { actions.clearAll(); this.confirmClear = false; },
     retry() { actions.retrySave(); },
     exportJson() { actions.exportJson(); },
+    exportCsv(kind) { actions.exportCsv(kind); },
     pickImport() { this.$refs.importFile.click(); },
     async onImport(e) {
       const file = e.target.files && e.target.files[0];
@@ -172,7 +173,16 @@ export const SettingsView = {
     <div class="card-head"><h3><ui-icon name="history" :size="16" /> 数据维护</h3></div>
     <div class="card-body stack-sm">
       <button class="btn btn-block" @click="exportJson">
-        <ui-icon name="download" :size="16" /> 导出当前数据（JSON）
+        <ui-icon name="download" :size="16" /> 导出当前数据（JSON 备份）
+      </button>
+      <button class="btn btn-block" @click="exportCsv('orders')">
+        <ui-icon name="download" :size="16" /> 导出订单 CSV（Excel 分析）
+      </button>
+      <button class="btn btn-block" @click="exportCsv('items')">
+        <ui-icon name="download" :size="16" /> 导出订单明细 CSV
+      </button>
+      <button class="btn btn-block" @click="exportCsv('products')">
+        <ui-icon name="download" :size="16" /> 导出商品库存 CSV
       </button>
       <button class="btn btn-block" :disabled="importing" @click="pickImport">
         <ui-icon name="boxIn" :size="16" /> {{ importing ? '导入中…' : '导入数据（JSON）' }}
@@ -184,7 +194,7 @@ export const SettingsView = {
       <button class="btn btn-block btn-danger" @click="confirmClear = true">
         <ui-icon name="trash" :size="16" /> 清空所有数据
       </button>
-      <p class="xs muted">导出只是给本地留个备份，云端才是唯一数据源。导入会整体替换云端数据，建议先导出。</p>
+      <p class="xs muted">JSON 用来备份和恢复（能完整还原）；CSV 用来在 Excel 里看账分析，不能当备份导入。云端才是唯一数据源，导入 JSON 会整体替换云端数据，建议先导出。</p>
     </div>
   </div>
 
