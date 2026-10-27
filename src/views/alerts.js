@@ -36,7 +36,7 @@ export const AlertsView = {
     stateOf(id) { return stockState(id); },
     restock(a) { store.ui.sheet = { type: 'stockin', productId: a.product_id }; },
     take(a) { store.ui.sheet = { type: 'stocktake', productId: a.product_id }; },
-    resolve(a) { actions.resolveAlert(a.id, '已补货'); },
+    async resolve(a) { await actions.resolveAlert(a.id, '已补货'); },
     kindTxt(a) { return a.kind === 'negative' || a.quantity < 0 ? '负库存' : '低于安全库存'; }
   },
   template: `

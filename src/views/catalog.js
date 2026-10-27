@@ -387,10 +387,10 @@ export const CatalogView = {
     },
     addFormTagName(t) { if (!this.prodForm.tags.includes(t)) this.prodForm.tags.push(t); },
     removeFormTag(t) { this.prodForm.tags = this.prodForm.tags.filter(x => x !== t); },
-    saveProduct() {
+    async saveProduct() {
       const f = this.prodForm;
       this.saving = true;
-      const res = actions.saveProduct({
+      const res = await actions.saveProduct({
         ...f,
         category_id: f.cat2 || f.cat1 || null,
         tags: f.tags
@@ -398,7 +398,7 @@ export const CatalogView = {
       this.saving = false;
       if (res.ok) this.prodForm = null;
     },
-    toggle(p) { actions.toggleProduct(p.id); },
+    async toggle(p) { await actions.toggleProduct(p.id); },
 
     /* ---------- 批量导入 ---------- */
     openImport() {
@@ -546,13 +546,13 @@ export const CatalogView = {
       if (r.warns.length) return r.warns[0];
       return '';
     },
-    doImport() {
+    async doImport() {
       const parsed = this.importMode === 'table' ? this.sheetParsed : this.importParsed;
       if (!parsed) return;
       const rows = parsed.rows.filter(r => !r.errors.length);
       if (!rows.length) { toast('没有可导入的行，先按提示改一下', 'warn'); return; }
       this.saving = true;
-      const res = actions.importProducts(rows, { autoCreateCategory: this.autoCreateCategory });
+      const res = await actions.importProducts(rows, { autoCreateCategory: this.autoCreateCategory });
       this.saving = false;
       if (!res.ok) return;
       const okCount = res.data.ok.length;
@@ -664,7 +664,7 @@ export const CatalogView = {
       };
       this._categoryFrame = requestAnimationFrame(this._categoryTick);
     },
-    finishCategoryDrag(commit = false) {
+    async finishCategoryDrag(commit = false) {
       const drag = this.catDrag;
       if (!drag) return;
       const bounds = this._categoryDrag.list.getBoundingClientRect();
@@ -687,7 +687,7 @@ export const CatalogView = {
           .filter(row => { const r = row.getBoundingClientRect(); return drag.y > r.top + r.height / 2; }).length;
         const target = siblings[index];
         if (target && target.id !== drag.id) {
-          const result = actions.moveCategoryTo(drag.id, target.id);
+          const result = await actions.moveCategoryTo(drag.id, target.id);
           if (result.ok) toast('已调整「' + drag.name + '」的顺序', 'ok');
         }
       }
@@ -710,15 +710,15 @@ export const CatalogView = {
       const c = id ? store.db.categories.find(x => x.id === id) : null;
       if (c) this.confirmCatDelete = { ...c, count: categoryProductCount(store.db, c.id) };
     },
-    saveCatEdit() {
+    async saveCatEdit() {
       if (!this.catEdit || !this.catEdit.name.trim()) return;
-      const res = actions.saveCategory({
+      const res = await actions.saveCategory({
         id: this.catEdit.id, parent_id: this.catEdit.parentId, name: this.catEdit.name
       });
       if (res.ok) this.catEdit = null;
     },
-    doDeleteCategory() {
-      actions.removeCategory(this.confirmCatDelete.id);
+    async doDeleteCategory() {
+      await actions.removeCategory(this.confirmCatDelete.id);
       this.confirmCatDelete = null;
       /* 被删节点及更深层的选中状态一并收回 */
       const valid = [];
@@ -728,21 +728,21 @@ export const CatalogView = {
       }
       this.catPath = valid;
     },
-    createTag() {
+    async createTag() {
       const v = String(this.newTag || '').trim();
       if (!v) return;
-      const res = actions.addTag(v);
+      const res = await actions.addTag(v);
       if (res.ok) this.newTag = '';
     },
     startEditTag(t) { this.tagEdit = { from: t.name, name: t.name }; },
-    saveTagEdit() {
+    async saveTagEdit() {
       if (!this.tagEdit || !this.tagEdit.name.trim()) return;
-      const res = actions.renameTag(this.tagEdit.from, this.tagEdit.name);
+      const res = await actions.renameTag(this.tagEdit.from, this.tagEdit.name);
       if (res.ok) this.tagEdit = null;
     },
     askDeleteTag(t) { this.confirmTagDelete = t; },
-    doDeleteTag() {
-      actions.removeTag(this.confirmTagDelete.name);
+    async doDeleteTag() {
+      await actions.removeTag(this.confirmTagDelete.name);
       this.confirmTagDelete = null;
     },
 
@@ -800,15 +800,15 @@ export const CatalogView = {
       group.product_ids = this.groupProducts(group).map(p => p.id);
     },
     clearGroupProducts(group) { group.product_ids = []; },
-    saveCombo() {
+    async saveCombo() {
       this.saving = true;
-      const res = actions.saveCombo(this.comboTarget);
+      const res = await actions.saveCombo(this.comboTarget);
       this.saving = false;
       if (res.ok) this.comboTarget = null;
     },
     askDelete(c) { this.confirmDelete = c; },
-    doDelete() {
-      actions.deleteCombo(this.confirmDelete.id);
+    async doDelete() {
+      await actions.deleteCombo(this.confirmDelete.id);
       this.confirmDelete = null;
     },
     comboGroupList(c) {

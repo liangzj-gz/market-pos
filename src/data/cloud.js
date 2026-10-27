@@ -32,8 +32,8 @@ function db() { return getClient().database; }
 function auth() { return getClient().auth; }
 
 /* ---------- 错误文案 ---------- */
-/* 分支判断永远走 error.kind / 错误码，不依赖文案 */
-const KIND_MSG = {
+/* 分支判断永远走 error.kind / 错误码，不依赖文案（导出给 api.js 复用） */
+export const KIND_MSG = {
   network: '网络连接失败，请检查网络后重试',
   'backend-unavailable': '云端服务暂时不可用，请稍后重试',
   unauthenticated: '登录已过期，请重新登录',
@@ -41,7 +41,7 @@ const KIND_MSG = {
   rate_limited: '操作太频繁，请稍后再试'
 };
 
-function readable(err, fallback) {
+export function readable(err, fallback) {
   if (!err) return fallback;
   const kind = err.kind || err.code;
   if (kind && KIND_MSG[kind]) return KIND_MSG[kind];
@@ -49,7 +49,7 @@ function readable(err, fallback) {
   return fallback;
 }
 
-function dbMessage(err, fallback) {
+export function dbMessage(err, fallback) {
   if (!err) return fallback;
   const code = err.code;
   if (code === '42P01') return '云端数据表还没建好，请联系应用维护者';

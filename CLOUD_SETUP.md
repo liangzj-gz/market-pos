@@ -1,145 +1,77 @@
-# 集市收银台 · WorkBuddy 云数据库接入规格
+# 集市收银台 · 云数据库接入规格（v3 字段化）
+
+> 当前版本：v3（2026-10-27 完成）。v1「整份 JSONB 一行」与 v2「行表 + data JSONB」均已被 v3 取代；
+> 旧函数已下线，`app_state` 行与 `legacy_*` 备份表保留作回滚数据源。
 
 ## 目标
 
-把当前静态版（`web/`，数据在浏览器 localStorage）升级为 WorkBuddy 云应用：
+- 手机号验证码登录（WorkBuddy 内置身份认证），数据按账号隔离
+- 商品 / 分类 / 标签 / 套餐 / 订单 / 明细 / 选品快照 / 调整 / 流水 / 余额 / 预警 / 收款码全部**字段化存储**
+- 金额 `numeric(12,2)`、时间 `timestamptz`、主外键 + 唯一约束 + 索引齐备，外键全部含 `owner_id` 复合
+- 业务规则（R1–R9）在**服务端事务**内执行：下单 = 订单 + 明细 + 选品 + 调整 + 扣库存 + 流水 + 预警一次落库
+- 订单 / 流水服务端筛选分页；统计服务端聚合
+- 幂等：所有写接口带 `request_id`，重复提交（网络重试 / 双击）只生效一次（`client_requests` 表去重）
 
-- 手机号验证码登录（WorkBuddy 内置身份认证）
-- 数据按账号隔离，换设备登录后看到同一份数据
-- 保留现有 Vue 界面和 `web/src/domain/rules.js` 的全部业务规则
-- 首次登录云端无数据时，用 `web/src/data/seed.js` 的 29 笔历史订单初始化
+## 表结构（20 张）
 
-不要重写业务规则，也不要把规则翻译成 SQL。规则继续在前端执行，云端只负责存取整份数据。
+行表：`categories products tags product_tags combos combo_items combo_groups combo_group_products
+orders order_items order_item_selections adjustments movements inventory_balances stock_alerts payment_codes`
+单行/辅助：`app_meta`（保留）、`id_counters`（服务端 id 分配）、`order_no_counters`（订单号日计数）、
+`client_requests`（幂等去重）、`app_state`（v1 遗留，保留只读）。
 
-## 数据模型：单行 JSONB + 乐观并发
+- 库存余额独立成表 `inventory_balances`：**无行 = 未盘点；0 = 余额为零**
+- 收款码存文件存储路径（`payment_codes.storage_path`），图片本体在 Storage `users/<uid>/payment-codes/`
+- 完整 DDL 见 `sql/0001_schema.sql` + `sql/0002_indexes.sql`
 
-一份数据对应一个登录用户，存成一行 JSONB，形状与 `web/src/data/store.js` 里的 `store.db` 完全一致（products / categories / tags / combos / orders / orderItems / adjustments / balances / movements / alerts / seq）。
+## 服务端接口（26 个 SECURITY DEFINER 函数，`sql/0003_functions.sql`）
 
-```sql
-create table if not exists public.app_state (
-  owner_id text primary key default auth.uid(),
-  version bigint not null default 0,
-  doc jsonb not null default '{}'::jsonb,
-  updated_at timestamptz not null default now()
-);
+| 类别 | 函数 |
+|---|---|
+| 读 | `load_snapshot`（主数据快照）、`dashboard`（今日看板）、`list_orders`（订单分页筛选）、`get_order`（订单详情）、`list_movements`（流水分页）、`stats_summary`（统计聚合）、`export_dataset`（全量导出/备份） |
+| 写 | `create_order`、`order_action`（confirm/cancel，CAS 状态机）、`stock_action`（in/set）、`save_product`、`import_products`、`save_combo`、`delete_combo`、`save_category`、`delete_category`、`save_tag`、`toggle_product`、`resolve_alert`、`save_payment_code` |
+| 内部 | `v3_next_id`、`v3_next_order_no`（`SO+yyyyMMdd+3位流水`）、`v3_day_summary`、`v3_order_impact`、`v3_upsert_product`、`v3_raise_alert`（不给客户端 EXECUTE） |
 
-alter table public.app_state enable row level security;
+安全收口：所有 public 表 ENABLE RLS；客户端对业务表零 GRANT，只能经函数读写；
+`owner_id` 由函数注入 `auth.uid()`，跨账号读写不成立（`sql/0004_grants.sql`）。
 
-drop policy if exists "app_state_own" on public.app_state;
-create policy "app_state_own" on public.app_state
-  for all
-  using (owner_id = auth.uid())
-  with check (owner_id = auth.uid());
+## 前端数据层
 
-create or replace function public.save_state(p_version bigint, p_doc jsonb)
-returns jsonb
-language plpgsql
-security invoker
-as $$
-declare
-  v_uid text := auth.uid();
-  v_new bigint;
-begin
-  if v_uid is null then
-    raise exception 'AUTH_REQUIRED';
-  end if;
-
-  update public.app_state
-     set version = version + 1,
-         doc = p_doc,
-         updated_at = now()
-   where owner_id = v_uid
-     and version = p_version
-  returning version into v_new;
-
-  if v_new is null and p_version = 0 then
-    insert into public.app_state (owner_id, version, doc, updated_at)
-    values (v_uid, 1, p_doc, now())
-    on conflict (owner_id) do nothing
-    returning version into v_new;
-  end if;
-
-  if v_new is null then
-    return null; -- 版本冲突，客户端重新拉取
-  end if;
-
-  return jsonb_build_object('version', v_new);
-end;
-$$;
-
-grant execute on function public.save_state(bigint, jsonb) to authenticated;
+```
+src/cloud-config.js   应用标识（publishableKey，无权限语义）
+src/data/cloud.js     SDK 客户端 / 登录会话
+src/data/api.js       rpc() 封装 + newRequestId() 幂等键 + Storage 收款码上传/签名
+src/data/store.js     服务端权威 + 前端缓存：登录拉快照；写操作立即 RPC，成功后按返回值更新缓存并后台刷新
 ```
 
-## 前端改造
+- 登录后 `load_snapshot()` 装配主数据（商品/分类/套餐/标签/余额/预警），`dashboard()` 拉今日看板
+- 订单页 `list_orders` 服务端筛选 + 分页（每页 30 条，加载更多）；详情 `get_order`（含选品快照展开）
+- 统计页 `stats_summary` 服务端聚合；库存页流水来自快照（每商品近 12 条）
+- 所有写动作带 `request_id`；`?preview=1` 预览分支保留（跳过登录灌种子数据，写操作走前端规则引擎，不调云端）
+- 缓存版本号：改任何被 import 的模块必须同步升级 `index.html` importmap 的 `?v=`（当前 `v3-rpc-20261027`）
 
-### 1. 引入 SDK
+## 数据迁移与回滚
 
-把 WorkBuddy Cloud SDK 作为本地脚本放在 `assets/vendor/workbuddy-cloud-sdk.js`（已放好），在 `index.html` 的 `src/app.js` 之前加载：
+- 迁移脚本 `sql/0010_migrate_from_legacy.sql`（单事务 DO 块，逐字段映射，2026-10-27 已执行并核对通过）
+- 基线核对：分类 17 / 商品 36 / 标签 5+11 / 套餐 2 / 订单 30 / 明细 56 / 调整 12 / 流水 97 / 余额 36 / 预警 7；
+  应收 1138.00 = 实收 1144.00 − 调整 6.00；孤儿行 0
+- 双备份：`bak_20261027_*`（data JSONB 快照表）+ `legacy_*`（改名留存）；`app_state` 原行保留
+- 代码回滚点：git tag `pre-v2-tables`（v2 代码）；v1 应急回滚数据源 = `app_state` 原行
+- 切换后产生的 v3 新数据如需回滚，用 `export_dataset()` 导出的 JSON 反向生成 v1 doc 写回 `app_state`（恢复 `save_state` 函数即可），或以 `bak_20261027_*` 为底、手工补差异
 
-```html
-<script src="./assets/vendor/workbuddy-cloud-sdk.js"></script>
-<script type="module" src="./src/app.js"></script>
-```
+## 发布与验收
 
-### 2. 配置文件
-
-新增 `web/src/cloud-config.js`，由 WorkBuddy 云服务激活结果填入：
-
-```js
-export const cloudConfig = {
-  endpoint: 'https://<应用域名>',
-  oauthRelayBaseUrl: 'https://www.workbuddy.cn/v2/as/genie-baas/oauth',
-  publishableKey: 'wbpk_<...>'
-};
-```
-
-`endpoint` 必须和新应用发布后的域名一致（WorkBuddy 会做 Origin 校验）。
-
-### 3. 云端数据层
-
-新增 `web/src/data/cloud.js`：
-
-- `createWorkBuddyCloud({ endpoint, oauthRelayBaseUrl, publishableKey })`
-- `getSession()` / `sendOtp({ phone })` / `verifyOtp(...)` / `signOut()`
-- `loadState()`：`from('app_state').select('version,doc').limit(1)`
-- `saveState(version, doc)`：`rpc('save_state', { p_version: version, p_doc: doc })`
-- 返回 null 表示版本冲突，重新 `loadState()` 后提示用户重试
-
-### 4. store.js
-
-保留现有的 `store` / `selectors` / `actions` 形状，只替换持久化：
-
-- 启动时先检查登录状态；未登录显示登录页
-- 登录后 `loadState()`；没有行时 `buildSeedDb()`，用 `version: 0` 调 `saveState`
-- `act(fn)` 仍然同步执行业务规则并更新 `store.db`，然后 300ms 防抖调用 `saveState`
-- 保存成功更新 `store.version` 和同步状态；冲突时重新拉取并提示「数据已在其他设备更新，请重试刚才的操作」
-- 网络失败时保留本地修改并显示「未同步」，不要让页面白屏
-- `actions.exportJson` 继续可用；`actions.importJson` 导入后也要走 `saveState`
-- 移除「演示数据 / 本机数据」文案，改成「云端同步」和当前登录手机号
-
-### 5. 登录页
-
-新增 `web/src/views/login.js`：
-
-- 手机号 + 6 位验证码
-- 「获取验证码」倒计时 60 秒
-- 登录成功后进入应用；退出登录清空当前内存数据
-- 复用现有 CSS 变量和按钮样式，移动端单列布局
-
-## 发布
-
-1. 在 WorkBuddy 新建/绑定应用，开通「云数据库」和「身份认证」。
-2. 用上面的 SQL 建表、开 RLS、建 `save_state` 函数。
-3. 把云服务返回的 `endpoint`、`publishableKey` 填进 `web/src/cloud-config.js`。
-4. 发布 `web/` 为网站应用，确保新应用域名与 `endpoint` 完全一致。
-5. 用手机号登录一次，确认：
-   - 首次登录自动写入 29 笔历史订单
-   - 开单/收款后刷新页面数据仍在
-   - 换一个浏览器登录同一手机号能看到同一份数据
-   - 未登录直接访问接口返回未授权
+1. WorkBuddy 云数据库 + 身份认证已开通（应用 `wbapp_guTvZWDoSjTuFs6rthM30K`）
+2. 桌面端「发布为应用」触发正式上线，与 `git push` 互不影响
+3. 验收项：
+   - 登录后快照数字与上表基线一致
+   - 开单 → 库存扣减、流水、预警同事务；断网提交不落库、重试不重复
+   - 双设备并发开单不撞订单号、不撞 id（服务端原子分配）
+   - 冲销回补库存并生成反向流水，原单保留
+   - `?preview=1` 免登录分支可用（本机调试）
+   - 收款码上传后换设备登录可见
 
 ## 验收底线
 
-- 云端是唯一数据源；localStorage 只能做临时缓存，不能作为最终存储
-- 两个页面同时操作时，后保存者收到冲突提示并刷新，不得静默覆盖
-- 不在前端硬编码数据库密钥；只使用 WorkBuddy 云服务返回的 publishableKey
+- 云端数据库是唯一数据源；前端只做缓存，不落 localStorage
+- 业务表客户端零直连权限；`publishableKey` 之外不得出现任何密钥
+- 任何写接口失败即整体回滚，不允许出现「订单有了库存没扣」的中间态

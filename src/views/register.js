@@ -1,7 +1,7 @@
 /* 开单收银台：选货 → 看应收 → 收款，三步以内完成一单 */
 import {
   store, productsOnSale, combosOnSale, frequentIds,
-  stockState, balanceOf, actions, productById, comboById, tagLibrary
+  stockState, balanceOf, actions, productById, comboById, tagLibrary, toast
 } from '../data/store.js';
 import { money, moneyNum, num, r2, int } from '../util/format.js';
 import {
@@ -363,9 +363,9 @@ export const RegisterView = {
       this.cartOpen = false;
       this.paying = true;
     },
-    onPaySubmit(payload) {
+    async onPaySubmit(payload) {
       this.submitting = true;
-      const res = actions.createOrder({
+      const res = await actions.createOrder({
         lines: cartToOrderLines(),
         note: this.note.trim() || null,
         settle: true,
@@ -378,21 +378,21 @@ export const RegisterView = {
       clearCart();
       this.receipt = {
         order: d.order,
-        items: store.db.orderItems.filter(i => i.order_id === d.order.id),
+        items: d.items || [],
         adjustment: d.adjustment,
-        alerts: d.alerts
+        alerts: d.alerts || []
       };
     },
-    hang() {
+    async hang() {
       if (!this.hasItems) return;
-      const res = actions.createOrder({ lines: cartToOrderLines(), note: this.note.trim() || null, settle: false });
+      const res = await actions.createOrder({ lines: cartToOrderLines(), note: this.note.trim() || null, settle: false });
       if (!res.ok) return;
       this.cartOpen = false;
       const d = res.data;
       clearCart();
       this.receipt = {
         order: d.order,
-        items: store.db.orderItems.filter(i => i.order_id === d.order.id),
+        items: d.items || [],
         adjustment: null,
         alerts: []
       };

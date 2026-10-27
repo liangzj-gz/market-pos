@@ -1,22 +1,23 @@
-/* 设置：云端账号、数据维护、业务规则对照 */
+/* 设置：云端账号、收款码、数据导出、业务规则对照 */
 import { store, actions, demoInfo, changePassword, logout, toast, PREVIEW } from '../data/store.js';
-import { UiPaymentCode, readPaymentCode } from '../components/payment-code.js';
+import { UiPaymentCode } from '../components/payment-code.js';
 import { fmtDT } from '../util/format.js';
 
 const RULES = [
   ['R1', '实收 ≠ 应收时必须选差额原因，差额单独记账'],
   ['R2', '赠品行金额为 0，但仍计入销量与出库'],
-  ['R3', '收款与库存扣减一起完成，失败不落库'],
+  ['R3', '收款与库存扣减在服务端同一事务完成，失败不落库'],
   ['R4', '冲销生成反向流水，原单永不删除'],
   ['R5', '出库后余额 ≤ 安全库存即触发一条预警'],
   ['R6', '盘点差异生成调整流水并留痕原因'],
   ['R7', '停售商品不能加入新订单，历史订单照常展示'],
-  ['R8', '套餐按明细逐商品扣库存，价格按套餐价整体算']
+  ['R8', '套餐按明细逐商品扣库存，价格按套餐价整体算'],
+  ['R9', '同一操作重复提交（网络重试 / 双击）只生效一次']
 ];
 
 const SYNC_TXT = {
-  idle: '待同步', pending: '同步中', saving: '同步中',
-  saved: '已同步', unsynced: '未同步', conflict: '待刷新'
+  idle: '已连接', saving: '处理中',
+  saved: '已同步', unsynced: '操作失败', local: '本地预览'
 };
 
 export const SettingsView = {
@@ -24,9 +25,9 @@ export const SettingsView = {
   components: { UiPaymentCode },
   data() {
     return {
-      confirmReset: false, confirmClear: false, confirmLogout: false,
+      confirmLogout: false,
       codeUploading: false, codeChannels: [{ key: 'wechat', label: '微信' }, { key: 'alipay', label: '支付宝' }],
-      rules: RULES, importing: false,
+      rules: RULES,
       showPwd: false, oldPwd: '', newPwd: '', newPwd2: '', pwdBusy: false, pwdError: ''
     };
   },
@@ -34,8 +35,8 @@ export const SettingsView = {
     preview() { return PREVIEW; },
     store() { return store; },
     info() { return demoInfo.value; },
-    syncText() { return SYNC_TXT[store.sync.state] || '云端同步'; },
-    syncBad() { return ['unsynced', 'conflict'].includes(store.sync.state); },
+    syncText() { return SYNC_TXT[store.sync.state] || '已连接'; },
+    syncBad() { return store.sync.state === 'unsynced'; },
     phoneText() {
       const p = store.auth.phone || '';
       return p.length === 11 ? p.slice(0, 3) + ' ' + p.slice(3, 7) + ' ' + p.slice(7) : (p || '—');
@@ -45,29 +46,32 @@ export const SettingsView = {
     }
   },
   methods: {
+    /* 收款码：图片上传云端文件存储，数据库只存路径 */
     async uploadPaymentCode(channel, event) {
       const file = event.target.files?.[0];
       if (!file) return;
+      if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+        toast('请选择 JPG、PNG 或 WebP 收款码图片', 'warn');
+        event.target.value = '';
+        return;
+      }
+      if (file.size > 3 * 1024 * 1024) {
+        toast('收款码图片请小于 3MB', 'warn');
+        event.target.value = '';
+        return;
+      }
       this.codeUploading = true;
-      try { actions.savePaymentCode(channel, await readPaymentCode(file)); }
-      catch (error) { toast(error.message, 'warn'); }
+      try { await actions.savePaymentCodeFile(channel, file); }
+      catch (error) { toast(error.message || '上传失败，请重试', 'warn'); }
       finally { this.codeUploading = false; event.target.value = ''; }
     },
     fmtDT,
-    reset() { actions.resetDemo(); this.confirmReset = false; },
-    clear() { actions.clearAll(); this.confirmClear = false; },
-    retry() { actions.retrySave(); },
-    exportJson() { actions.exportJson(); },
-    exportCsv(kind) { actions.exportCsv(kind); },
-    pickImport() { this.$refs.importFile.click(); },
-    async onImport(e) {
-      const file = e.target.files && e.target.files[0];
-      if (!file) return;
-      this.importing = true;
-      await actions.importJson(file);
-      this.importing = false;
-      e.target.value = '';
+    retry() {
+      store.sync.error = '';
+      store.sync.state = 'saved';
     },
+    async exportJson() { await actions.exportJson(); },
+    async exportCsv(kind) { await actions.exportCsv(kind); },
     openPwd() {
       this.oldPwd = ''; this.newPwd = ''; this.newPwd2 = ''; this.pwdError = '';
       this.showPwd = true;
@@ -92,19 +96,19 @@ export const SettingsView = {
 <div class="v-settings">
   <div class="page-head">
     <div class="page-title">设置</div>
-    <div class="page-sub">账号、同步与数据维护</div>
+    <div class="page-sub">账号、收款码与数据导出</div>
   </div>
 
   <div class="card">
     <div class="card-head"><h3>收款码</h3></div>
     <div class="card-body">
       <p class="small muted">选择收款渠道时自动展示对应收款码。请上传完整、清晰的原图。</p>
-      <p class="field-hint">{{ preview ? '预览模式仅保存在当前浏览器，换设备需重新上传。' : '收款码随当前账户数据同步，换设备登录同一账户即可读取。' }}</p>
+      <p class="field-hint">{{ preview ? '预览模式仅保存在当前浏览器，换设备需重新上传。' : '收款码图片存在云端文件存储，换设备登录同一账户即可读取。' }}</p>
       <div class="payment-code-settings">
         <section v-for="c in codeChannels" :key="c.key">
           <h4>{{ c.label }}收款码</h4>
           <ui-payment-code :channel="c.key" :code="store.db.paymentCodes?.[c.key] || ''" />
-          <label class="btn btn-sm">{{ codeUploading ? '正在保存…' : '上传 / 更换' }}
+          <label class="btn btn-sm">{{ codeUploading ? '正在上传…' : '上传 / 更换' }}
             <input type="file" accept="image/png,image/jpeg,image/webp" :aria-label="'上传' + c.label + '收款码'" :disabled="codeUploading" @change="uploadPaymentCode(c.key, $event)" class="payment-code-file">
           </label>
         </section>
@@ -123,16 +127,17 @@ export const SettingsView = {
         <div class="info-row"><span>云端存储</span><b class="mono">{{ info.syncMode }}</b></div>
       </div>
       <p class="small" style="line-height:1.7;color:var(--label-2);margin-top:12px">
-        商品、订单、库存全部存在云端，按手机号隔离。改完会自动同步，
+        商品、订单、库存按字段存进云端数据库，每个操作在服务端成套落库：
+        下单即扣库存、盘点即出流水，不会出现「本机记了、云端没记」的中间态。
         换手机或换浏览器用同一个号码登录，看到的是同一份数据。
       </p>
-      <p class="xs muted" style="margin-top:8px">最近同步：{{ info.savedAt ? fmtDT(info.savedAt) : '—' }}</p>
+      <p class="xs muted" style="margin-top:8px">最近操作：{{ info.savedAt ? fmtDT(info.savedAt) : '—' }}</p>
 
       <div class="pill-note pill-note-warn" style="margin-top:12px" v-if="syncBad">
         <ui-icon name="alert" :size="16" />
         <div class="grow">
-          {{ info.syncError || '这次改动还没同步到云端，先别关页面。' }}
-          <button class="btn btn-sm" style="margin-left:8px" @click="retry">立即重试</button>
+          {{ info.syncError || '上一次操作没有成功，请重试。' }}
+          <button class="btn btn-sm" style="margin-left:8px" @click="retry">知道了</button>
         </div>
       </div>
     </div>
@@ -170,7 +175,7 @@ export const SettingsView = {
   </div>
 
   <div class="card">
-    <div class="card-head"><h3><ui-icon name="history" :size="16" /> 数据维护</h3></div>
+    <div class="card-head"><h3><ui-icon name="history" :size="16" /> 数据导出</h3></div>
     <div class="card-body stack-sm">
       <button class="btn btn-block" @click="exportJson">
         <ui-icon name="download" :size="16" /> 导出当前数据（JSON 备份）
@@ -184,17 +189,7 @@ export const SettingsView = {
       <button class="btn btn-block" @click="exportCsv('products')">
         <ui-icon name="download" :size="16" /> 导出商品库存 CSV
       </button>
-      <button class="btn btn-block" :disabled="importing" @click="pickImport">
-        <ui-icon name="boxIn" :size="16" /> {{ importing ? '导入中…' : '导入数据（JSON）' }}
-      </button>
-      <input ref="importFile" type="file" accept="application/json,.json" style="display:none" @change="onImport">
-      <button class="btn btn-block" @click="confirmReset = true">
-        <ui-icon name="refresh" :size="16" /> 恢复初始历史数据
-      </button>
-      <button class="btn btn-block btn-danger" @click="confirmClear = true">
-        <ui-icon name="trash" :size="16" /> 清空所有数据
-      </button>
-      <p class="xs muted">JSON 用来备份和恢复（能完整还原）；CSV 用来在 Excel 里看账分析，不能当备份导入。云端才是唯一数据源，导入 JSON 会整体替换云端数据，建议先导出。</p>
+      <p class="xs muted">JSON 是全量备份（含订单、明细、流水、余额）；CSV 用来在 Excel 里看账分析。云端数据库是唯一数据源，建议定期导出备份。</p>
     </div>
   </div>
 
@@ -216,7 +211,7 @@ export const SettingsView = {
     <div class="card-body">
       <p class="small" style="line-height:1.7;color:var(--label-2)">
         摆摊订单管家 · 市集收银台<br>
-        <span class="muted">开单收款、订单跟踪、库存盘点、经营统计，一个页面管完一场市集。业务规则仍在前端执行，云端只负责按账号存取。</span>
+        <span class="muted">开单收款、订单跟踪、库存盘点、经营统计，一个页面管完一场市集。数据按字段存云端数据库，业务规则在服务端成套执行。</span>
       </p>
     </div>
   </div>
@@ -243,16 +238,8 @@ export const SettingsView = {
     </template>
   </ui-sheet>
 
-  <ui-confirm v-if="confirmReset" title="恢复初始历史数据？"
-              text="当前所有改动会被云端覆盖，回到初始的 36 个商品、2 个套餐和 29 笔历史订单。"
-              confirm-text="恢复" danger @yes="reset" @no="confirmReset = false" />
-
-  <ui-confirm v-if="confirmClear" title="清空所有数据？"
-              text="商品、订单、库存、流水和预警会全部清掉，云端也会同步成空库。建议先导出备份。"
-              confirm-text="清空" danger @yes="clear" @no="confirmClear = false" />
-
   <ui-confirm v-if="confirmLogout" title="退出登录？"
-              text="退出后本页不再显示数据，重新登录会从云端重新拉取。未同步的改动会先尝试保存。"
+              text="退出后本页不再显示数据，重新登录会从云端重新拉取。"
               confirm-text="退出" danger @yes="doLogout" @no="confirmLogout = false" />
 </div>`
 };

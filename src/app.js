@@ -1,16 +1,18 @@
 /* 应用外壳：登录门禁、导航、全局抽屉、提示层 */
+/* 版本号统一在 index.html 的 importmap 里管理（?v=），这里不直接带，
+   否则同一个模块会出现两份实例（app 的 store 与视图的 store 不同步） */
 import { store, openAlerts, pendingOrders, markReady, bootstrap } from './data/store.js';
 import { registerComponents } from './components/index.js';
 import { UiStockInSheet, UiStockTakeSheet } from './components/stock-sheets.js';
 import { LoginView } from './views/login.js';
 import { TodayView } from './views/today.js';
-import { RegisterView } from './views/register.js?v=scanner-dock-20261023';
+import { RegisterView } from './views/register.js';
 import { OrdersView } from './views/orders.js';
 import { InventoryView } from './views/inventory.js';
 import { AlertsView } from './views/alerts.js';
-import { CatalogView } from './views/catalog.js?v=auto-barcode-20261023';
+import { CatalogView } from './views/catalog.js';
 import { StatsView } from './views/stats.js';
-import { SettingsView } from './views/settings.js?v=csv-export-20261026';
+import { SettingsView } from './views/settings.js';
 
 const { createApp } = window.Vue;
 

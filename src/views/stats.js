@@ -1,8 +1,8 @@
-/* 统计：营收趋势、渠道、TOP 商品、差额损益——月底对账就靠这页 */
-import { store, buildStats, comboById, productById } from '../data/store.js';
+/* 统计：营收趋势、渠道、TOP 商品、差额损益——服务端聚合，月底对账就靠这页 */
+import { store, fetchStats } from '../data/store.js';
 import {
-  money, moneyNum, ymd, startOfDay, addDays, weekdayCN, fmtD,
-  CHANNEL_TXT, CHANNEL_COLOR, group
+  money, ymd, startOfDay, addDays, weekdayCN, fmtD,
+  CHANNEL_TXT, CHANNEL_COLOR
 } from '../util/format.js';
 
 const PRESETS = [
@@ -16,9 +16,7 @@ export const StatsView = {
   name: 'StatsView',
   data() {
     const today = ymd(startOfDay());
-    const first = store.db.orders.length
-      ? ymd(new Date(Math.min(...store.db.orders.map(o => new Date(o.created_at).getTime()))))
-      : today;
+    const first = (store.counts && store.counts.firstDate) || today;
     return {
       presets: PRESETS,
       preset: 'all',
@@ -29,6 +27,7 @@ export const StatsView = {
   },
   computed: {
     store() { return store; },
+    loading() { return store.statsLoading; },
     range() {
       const today = ymd(startOfDay());
       const p = this.preset;
@@ -37,44 +36,53 @@ export const StatsView = {
       if (p === 'all') return { from: this.firstDate, to: today };
       return { from: this.from || this.firstDate, to: this.to || today };
     },
-    stats() {
-      return buildStats(store.db, this.range.from, this.range.to);
-    },
-    s() { return this.stats.summary; },
-    dailyMax() { return Math.max(1, ...this.stats.daily.map(d => d.revenue)); },
+    stats() { return store.stats; },
+    s() { return (this.stats && this.stats.summary) || { revenue: 0, receivable: 0, count: 0, avg: 0, pieces: 0, gifts: 0, giftRate: 0, diff: 0, diffCount: 0, diffRate: 0 }; },
+    dailyMax() { return Math.max(1, ...this.stats.daily.map(d => Number(d.revenue))); },
     bars() {
       return this.stats.daily.map(d => ({
         ...d,
+        revenue: Number(d.revenue),
         label: d.date.slice(8, 10),
         wk: weekdayCN(d.date),
-        h: d.revenue > 0 ? Math.max(7, Math.round(d.revenue / this.dailyMax * 100)) : 2
+        h: Number(d.revenue) > 0 ? Math.max(7, Math.round(Number(d.revenue) / this.dailyMax * 100)) : 2
       }));
     },
     wideChart() { return this.bars.length > 16; },
     channels() {
-      const total = this.s.channelTotal || this.stats.channels.reduce((t, c) => t + c.amount, 0) || 1;
+      const total = this.stats.channels.reduce((t, c) => t + Number(c.amount), 0) || 1;
       return this.stats.channels.map(c => ({
         ...c,
+        amount: Number(c.amount),
         label: CHANNEL_TXT[c.key] || '其他',
         color: CHANNEL_COLOR[c.key] || '#8C857B',
-        pct: Math.round(c.amount / total * 100)
+        pct: Math.round(Number(c.amount) / total * 100)
       }));
     },
-    topMax() { return Math.max(1, ...this.stats.top.map(t => t.qty)); },
+    topMax() { return Math.max(1, ...this.stats.top.map(t => Number(t.qty))); },
     topRows() {
-      return this.stats.top.map(t => ({ ...t, w: Math.round(t.qty / this.topMax * 100) }));
+      return this.stats.top.map(t => ({ ...t, qty: Number(t.qty), amount: Number(t.amount || 0), w: Math.round(Number(t.qty) / this.topMax * 100) }));
     },
-    seriesMax() { return Math.max(1, ...this.stats.series.map(t => t.qty)); },
+    seriesMax() { return Math.max(1, ...this.stats.series.map(t => Number(t.qty))); },
     seriesRows() {
-      return this.stats.series.slice(0, 8).map(t => ({ ...t, w: Math.round(t.qty / this.seriesMax * 100) }));
+      return this.stats.series.slice(0, 8).map(t => ({ ...t, qty: Number(t.qty), w: Math.round(Number(t.qty) / this.seriesMax * 100) }));
     },
-    hasData() { return this.s.count > 0; },
+    hasData() { return !!this.stats && this.s.count > 0; },
     rangeLabel() {
       return fmtD(this.range.from) + ' — ' + fmtD(this.range.to);
     }
   },
+  watch: {
+    range: {
+      immediate: true,
+      handler(r) { this.load(r); }
+    }
+  },
   methods: {
     money,
+    async load(r) {
+      await fetchStats(r.from, r.to);
+    },
     setPreset(k) {
       this.preset = k;
       if (k === 'custom') {
@@ -87,7 +95,7 @@ export const StatsView = {
 <div class="v-stats">
   <div class="page-head">
     <div class="page-title">统计</div>
-    <div class="page-sub">{{ rangeLabel }} · {{ s.count }} 笔已收款订单</div>
+    <div class="page-sub">{{ rangeLabel }}<template v-if="s.count"> · {{ s.count }} 笔已收款订单</template></div>
   </div>
 
   <div class="card filter-card">
@@ -104,7 +112,13 @@ export const StatsView = {
     </div>
   </div>
 
-  <template v-if="hasData">
+  <div class="card" v-if="loading && !stats">
+    <div class="card-body">
+      <ui-empty icon="stats" title="正在统计…" text="云端正在按区间汇总订单。" />
+    </div>
+  </div>
+
+  <template v-else-if="hasData">
     <div class="stat-grid" style="margin-bottom:14px">
       <div class="stat stat-accent">
         <div class="stat-label">实收</div>
@@ -121,9 +135,9 @@ export const StatsView = {
         <div class="stat-value">{{ s.pieces }}</div>
         <div class="stat-foot">其中赠品 {{ s.gifts }} 件（{{ s.giftRate }}%）</div>
       </div>
-      <div class="stat" :class="s.diffCount ? 'stat-warn' : 'stat-ok'">
+      <div class="stat" :class="Number(s.diffCount) ? 'stat-warn' : 'stat-ok'">
         <div class="stat-label">差额损益</div>
-        <div class="stat-value">{{ (s.diff > 0 ? '+' : '') + money(s.diff) }}</div>
+        <div class="stat-value">{{ (Number(s.diff) > 0 ? '+' : '') + money(s.diff) }}</div>
         <div class="stat-foot">{{ s.diffCount }} 笔有差额 · 占 {{ s.diffRate }}%</div>
       </div>
     </div>
@@ -179,10 +193,10 @@ export const StatsView = {
           </div>
           <div v-else class="adj-list">
             <div class="adj-row" v-for="a in stats.adjustments" :key="a.type">
-              <span class="tag" :class="a.amount < 0 ? 'tag-warn' : 'tag-info'">{{ a.type }}</span>
+              <span class="tag" :class="Number(a.amount) < 0 ? 'tag-warn' : 'tag-info'">{{ a.type }}</span>
               <span class="grow"></span>
               <span class="xs muted">{{ a.count }} 笔</span>
-              <b class="mono" :class="a.amount < 0 ? 'neg' : 'pos'">{{ (a.amount > 0 ? '+' : '') + money(a.amount) }}</b>
+              <b class="mono" :class="Number(a.amount) < 0 ? 'neg' : 'pos'">{{ (Number(a.amount) > 0 ? '+' : '') + money(a.amount) }}</b>
             </div>
             <div class="adj-note xs muted">
               负数＝让价少收，正数＝多收待退或录入更正。对账时按原因逐项核对。

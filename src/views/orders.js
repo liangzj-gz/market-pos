@@ -1,9 +1,9 @@
-/* 订单：按日/状态/渠道/关键词翻账，点开看完整轨迹，该收的收、该冲的冲 */
+/* 订单：按日/状态/渠道/关键词翻账（服务端筛选 + 分页），点开看完整轨迹，该收的收、该冲的冲 */
 import {
-  store, ordersDesc, actions, orderDetail, toast
+  store, actions, fetchOrdersPage, fetchOrderDetail, toast
 } from '../data/store.js';
 import {
-  money, moneyNum, fmtDT, fmtD, fmtAgo, ymd, startOfDay, addDays,
+  money, fmtDT, fmtAgo, ymd, startOfDay, addDays,
   STATUS_TXT, STATUS_TAG, CHANNEL_TXT
 } from '../util/format.js';
 import { UiPaySheet } from '../components/pay-sheet.js';
@@ -31,84 +31,121 @@ export const OrdersView = {
   },
   computed: {
     store() { return store; },
-    list() {
-      const f = this.filter;
-      const kw = f.search.trim().toLowerCase();
-      let from = null;
-      if (f.range !== 'all') {
-        from = addDays(startOfDay(), -(Number(f.range) - 1)).getTime();
-      }
-      return ordersDesc.value.filter(o => {
-        if (from !== null) {
-          const t = new Date(o.created_at).getTime();
-          if (t < from) return false;
-        }
-        if (f.status !== 'all' && o.status !== f.status) return false;
-        if (f.channel !== 'all' && o.channel !== f.channel) return false;
-        if (kw) {
-          const hay = (o.order_no + ' ' + (o.note || '')).toLowerCase();
-          const items = store.db.orderItems.filter(i => i.order_id === o.id).map(i => i.product_name).join(' ');
-          if (!(hay + ' ' + items.toLowerCase()).includes(kw)) return false;
-        }
-        return true;
-      });
+    page() { return store.ordersPage; },
+    loading() { return this.page.loading; },
+    /* 每行 { order, items }，服务端分页返回 */
+    rowsMap() {
+      const m = new Map();
+      this.page.rows.forEach(r => m.set(Number(r.order.id), r));
+      return m;
     },
+    list() { return this.page.rows.map(r => r.order); },
     totals() {
-      const paid = this.list.filter(o => o.status === 'paid');
       return {
-        count: this.list.length,
-        revenue: paid.reduce((t, o) => t + Number(o.paid_amount || 0), 0),
-        pending: this.list.filter(o => o.status === 'pending').length
+        count: this.page.total,
+        revenue: this.page.sumPaid,
+        pending: this.page.pendingTotal
       };
     },
-    detail() { return this.detailId ? orderDetail(this.detailId) : null; },
+    detail() { return this.detailId ? (store.details[this.detailId] || null) : null; },
     hasFilter() {
       const f = this.filter;
       return f.status !== 'all' || f.channel !== 'all' || !!f.search.trim() || f.range !== '30';
+    }
+  },
+  watch: {
+    filter: {
+      deep: true,
+      handler() {
+        if (this._kwTimer) clearTimeout(this._kwTimer);
+        this._kwTimer = setTimeout(() => { this._kwTimer = null; this.fetch(true); }, 350);
+      }
     }
   },
   mounted() {
     if (store.ui.openOrderId) {
       this.detailId = store.ui.openOrderId;
       store.ui.openOrderId = null;
+      fetchOrderDetail(this.detailId);
     }
+    this.fetch(true);
+  },
+  beforeUnmount() {
+    if (this._kwTimer) clearTimeout(this._kwTimer);
   },
   methods: {
-    money, moneyNum, fmtDT, fmtD, fmtAgo,
+    money, fmtDT, fmtAgo,
     statusTxt(s) { return STATUS_TXT[s] || s; },
     statusTag(s) { return STATUS_TAG[s] || 'gray'; },
     channelTxt(c) { return CHANNEL_TXT[c] || '—'; },
-    open(o) { this.detailId = o.id; },
+    query() {
+      const f = this.filter;
+      const today = ymd(startOfDay());
+      const cfg = RANGES.find(r => r.key === f.range);
+      return {
+        from: cfg && cfg.days ? ymd(addDays(startOfDay(), -(cfg.days - 1))) : null,
+        to: cfg && cfg.days ? today : null,
+        status: f.status !== 'all' ? f.status : null,
+        channel: f.channel !== 'all' ? f.channel : null,
+        keyword: f.search.trim() || null
+      };
+    },
+    async fetch(reset) {
+      if (!reset && !this.page.hasMore) return;
+      await fetchOrdersPage(this.query(), { reset });
+    },
+    async loadMore() { await this.fetch(false); },
+    open(o) {
+      this.detailId = o.id;
+      fetchOrderDetail(o.id);
+    },
     close() { this.detailId = null; },
     openPay(o) { this.detailId = null; this.payTarget = o; },
-    onPaySubmit(payload) {
+    async onPaySubmit(payload) {
       this.submitting = true;
-      const res = actions.confirmOrder(this.payTarget.id, payload);
+      const res = await actions.confirmOrder(this.payTarget.id, payload);
       this.submitting = false;
-      if (res.ok) this.payTarget = null;
+      if (res.ok) {
+        this.payTarget = null;
+        this.afterOrderChange();
+      }
     },
     openCancel(o) {
       this.detailId = null;
       this.cancelTarget = o;
       this.cancelReason = '';
     },
-    doCancel() {
+    async doCancel() {
       const reason = this.cancelReason.trim();
       if (this.cancelTarget.status === 'paid' && !reason) return;
       this.submitting = true;
       const wasPaid = this.cancelTarget.status === 'paid';
-      const res = actions.cancelOrder(this.cancelTarget.id, reason || '取消订单');
+      const res = await actions.cancelOrder(this.cancelTarget.id, reason || '取消订单');
       this.submitting = false;
       if (res.ok) {
         this.cancelTarget = null;
         toast(wasPaid ? '已冲销，库存已回补' : '订单已取消', 'ok');
+        this.afterOrderChange();
+      }
+    },
+    /* 收款 / 冲销后：刷新列表与服务端聚合，清掉详情缓存 */
+    afterOrderChange() {
+      this.fetch(true);
+      if (this.detailId) {
+        delete store.details[this.detailId];
+        fetchOrderDetail(this.detailId);
       }
     },
     resetFilter() {
       this.filter = { range: '30', status: 'all', channel: 'all', search: '' };
     },
     toggleItems(id) { this.expandedItems = { ...this.expandedItems, [id]: !this.expandedItems[id] }; },
-    itemsOf(id) { return store.db.orderItems.filter(i => i.order_id === id); },
+    rowOf(id) { return this.rowsMap.get(Number(id)); },
+    itemsOf(id) {
+      const row = this.rowOf(id);
+      if (row) return row.items || [];
+      return store.db.orderItems.filter(i => Number(i.order_id) === Number(id));
+    },
     summaryOf(o) {
       const items = this.itemsOf(o.id);
       const s = items.slice(0, 2).map(i => i.product_name + (i.quantity > 1 ? '×' + i.quantity : '')).join('、');
@@ -175,15 +212,20 @@ export const OrdersView = {
         <span class="oc-arrow"><ui-icon name="chevronRight" :size="15" /></span>
       </div>
     </button>
+    <div class="center" style="padding:14px 0 20px" v-if="page.hasMore || page.loading">
+      <button class="btn" :disabled="page.loading" @click="loadMore">
+        {{ page.loading ? '加载中…' : '加载更多（还有 ' + (page.total - page.rows.length) + ' 笔）' }}
+      </button>
+    </div>
   </div>
 
   <div class="card" v-else>
     <div class="card-body">
-      <ui-empty :icon="hasFilter ? 'search' : 'orders'"
-                :title="hasFilter ? '这些条件下没有订单' : '还没有订单'"
-                :text="hasFilter ? '放宽时间范围，或清掉状态和渠道筛选再看看。' : '去「开单」记第一笔，或到「设置」载入演示数据。'">
-        <button v-if="hasFilter" class="btn" @click="resetFilter">清空筛选</button>
-        <button v-else class="btn btn-primary" @click="store.ui.view = 'register'">去开单</button>
+      <ui-empty :icon="page.loading ? 'orders' : (hasFilter ? 'search' : 'orders')"
+                :title="page.loading ? '正在查询订单…' : (hasFilter ? '这些条件下没有订单' : '还没有订单')"
+                :text="page.loading ? '云端正在按条件筛选。' : (hasFilter ? '放宽时间范围，或清掉状态和渠道筛选再看看。' : '去「开单」记第一笔。')">
+        <button v-if="hasFilter && !page.loading" class="btn" @click="resetFilter">清空筛选</button>
+        <button v-else-if="!page.loading" class="btn btn-primary" @click="store.ui.view = 'register'">去开单</button>
       </ui-empty>
     </div>
   </div>

@@ -43,7 +43,7 @@ export const UiStockInSheet = {
       this.setQty(id, next || '');
     },
     stockOf(id) { return stockState(id); },
-    submit() {
+    async submit() {
       let items, note = this.note.trim() || null;
       if (this.mode === 'single') {
         if (!this.single || int(this.qty) < 1) return;
@@ -53,7 +53,7 @@ export const UiStockInSheet = {
         if (!items.length) return;
       }
       this.submitting = true;
-      const res = actions.stockIn(items, note);
+      const res = await actions.stockIn(items, note);
       this.submitting = false;
       if (res.ok) {
         const total = items.reduce((t, i) => t + i.quantity, 0);
@@ -156,10 +156,10 @@ export const UiStockTakeSheet = {
       this.counted = String(Math.max(0, base + d));
     },
     adjustLabel() { return MOV_TXT.adjust; },
-    submit() {
+    async submit() {
       if (!this.valid) return;
       this.submitting = true;
-      const res = actions.setStock(this.product.id, this.countedNum, this.reason.trim() || null);
+      const res = await actions.setStock(this.product.id, this.countedNum, this.reason.trim() || null);
       this.submitting = false;
       if (res.ok) this.$emit('close');
     }

@@ -1,14 +1,25 @@
 /* ============================================================
-   数据仓库（云端分表版 v2）
+   数据仓库（云端字段化 v3）
 
-   一份数据对应一个登录手机号。v2 起云端按物理分表持久化：
-   八张行表（商品/套餐/分类/订单/明细/调整/流水/预警）+ meta 单行，
-   业务规则仍在 rules.js 前端执行；保存时对「云端快照」做 diff，
-   只上传新增和变化的行、删除消失的行，请求体与历史数据量无关。
-   多设备同时用：id 通过服务端原子申领区间分配，永不撞号。
+   v3 起云端按 20 张字段化表存储（商品/订单/明细/调整/流水/余额…），
+   客户端对表零直连权限，读写全部走服务端 SECURITY DEFINER 函数：
 
-   ?sync=v1 可强制回退旧的「整份 JSON 一行」模式（应急用），
-   旧 app_state 行在迁移后仍保留，作为回滚数据源。
+   - load_snapshot()   登录后拉主数据快照（商品/分类/套餐/余额/预警）
+   - dashboard()       今日看板聚合（今日/昨日/近30天/待收款/最近订单）
+   - list_orders()     订单分页查询（服务端筛选 + 聚合）
+   - get_order()       订单详情（明细 + 选品快照 + 调整 + 流水）
+   - list_movements()  库存流水分页
+   - stats_summary()   统计聚合（服务端计算）
+   - create_order / order_action / stock_action / save_product /
+     import_products / save_combo / delete_combo / save_category /
+     delete_category / save_tag / toggle_product / resolve_alert /
+     save_payment_code … 全部写接口，带幂等键防重复提交
+
+   前端 db 只做缓存：主数据在快照里，订单/流水按页拉取进缓存池。
+   所有写操作立即调 RPC，成功后按返回值更新缓存并后台刷新快照。
+
+   ?preview=1 预览模式：跳过登录灌种子数据，写操作退回前端规则引擎，
+   不调用任何云端接口（用于 iPad / 手机等非同源环境的本地调试）。
    ============================================================ */
 
 import {
@@ -28,41 +39,25 @@ import { matchCategoryPath } from '../domain/import.js';
 import { fillProductBarcodes } from '../domain/barcode.js';
 import { SEED_PRODUCTS, SEED_COMBOS, SEED_ORDERS, SEED_OPENING_AT, SEED_TAGS } from './seed.js';
 import {
-  cloudAvailable, loadState, saveState, getSession, phoneOf,
+  cloudAvailable, getSession, phoneOf,
   signInWithPassword, sendOtp, verifyOtp, signOut as cloudSignOut,
-  changePassword as changePasswordRemote,
-  loadAppData, saveTableRows, saveMetaDoc, claimIdRange
+  changePassword as changePasswordRemote
 } from './cloud.js';
 import {
-  SYNC_TABLES, SEQ_KEYS,
-  buildTableSnapshot, buildMetaSnapshot, metaPart, diffTable, rowsToRecords
-} from './sync.js';
+  rpc, newRequestId, uploadPaymentCodeImage, signPaymentCodePath, removeStorageObject
+} from './api.js';
 
 const { reactive, computed } = window.Vue;
 
-/* 预览模式：URL 带 ?preview=1 时跳过登录，直接灌 29 笔种子数据，
-   不调用任何云端接口，用于 iPad / 手机等非同源环境的本地调试 */
+/* 预览模式：URL 带 ?preview=1 时跳过登录，直接灌 29 笔种子数据 */
 export const PREVIEW = typeof location !== 'undefined' &&
   new URLSearchParams(location.search).has('preview');
-
-/* 应急开关：?sync=v1 强制走旧的整份 JSON 模式（读写 app_state 行） */
-const FORCE_V1 = typeof location !== 'undefined' &&
-  new URLSearchParams(location.search).get('sync') === 'v1';
-
-/* v2 分表同步的运行时状态（不进 store，避免被当成业务数据） */
-const CLAIM_CHUNK = 1000;   // 每次申领的 id 区间长度
-const CLAIM_MARGIN = 200;   // 剩余量低于此值时自动续领
-const v2 = {
-  ready: false,             // 登录并完成加载/迁移后为 true
-  snap: null,               // { tables: {key: Map(id->指纹)}, meta: 指纹 }，代表云端现状
-  ranges: {}                // seqKey -> { start, end } 本设备申领到的 id 区间
-};
 
 /* 只记「上次登录的手机号」这一条 UI 偏好，绝不存业务数据 */
 const PHONE_KEY = 'stall.cloud.phone.v1';
 
 /* ============================================================
-   建库：主数据 → 期初建账 → 按时间回放 29 笔历史订单
+   建库（仅预览模式）：主数据 → 期初建账 → 回放 29 笔历史订单
    ============================================================ */
 export function buildSeedDb() {
   const db = createDb();
@@ -150,10 +145,99 @@ export function buildSeedDb() {
 /* reactive 代理不能直接丢给 JSON 序列化，先拍平成纯对象 */
 function toPlain(db) { return JSON.parse(JSON.stringify(db)); }
 
+/* 老数据补字段：只补分类树与标签，不动订单和库存（预览与导入用） */
+function migrate(db) {
+  if (!db || typeof db !== 'object') return createDb();
+  ['products', 'combos', 'orders', 'orderItems', 'adjustments', 'movements', 'alerts'].forEach(k => {
+    if (!Array.isArray(db[k])) db[k] = [];
+  });
+  if (!db.categories) db.categories = [];
+  if (!db.tags) db.tags = [];
+  if (!db.seq) db.seq = {};
+  if (!db.balances || typeof db.balances !== 'object') db.balances = {};
+  db.products.forEach(p => {
+    if (!Array.isArray(p.tags)) p.tags = [];
+    delete p.location;
+  });
+  buildCategoryTree(db);
+  collapseCategoryDepth(db);
+  fillProductBarcodes(db);
+  db.combos.forEach(c => {
+    if (!Array.isArray(c.items)) c.items = [];
+    if (!Array.isArray(c.groups)) c.groups = [];
+    /* 旧套餐按固定商品所属中类派生出自选子套餐；items 继续留给历史订单 */
+    if (!c.groups.length) c.groups = deriveComboGroups(db, c.items);
+    c.groups = c.groups.map(g => {
+      const mid = categoryById(db, g.category_id);
+      if (!mid) return g;
+      let productIds = Array.isArray(g.product_ids) ? g.product_ids.map(Number).filter(Boolean) : [];
+      if (!productIds.length) {
+        const fromItems = [];
+        (c.items || []).forEach(it => {
+          const p = productById(db, it.product_id);
+          if (p && p.category_id && categoryPath(db, p.category_id).some(cat => cat.id === mid.id) && !fromItems.includes(p.id)) {
+            fromItems.push(p.id);
+          }
+        });
+        productIds = fromItems.length ? fromItems : productsInMid(db, mid.id).map(p => p.id);
+      }
+      return {
+        category_l1_id: mid.parent_id || null,
+        category_id: mid.id,
+        quantity: Math.max(1, int(g.quantity) || 1),
+        product_ids: productIds
+      };
+    });
+  });
+  db.tags = Array.from(new Set([...db.tags, ...db.products.flatMap(p => p.tags || [])]));
+  return db;
+}
+
 /* ============================================================
-   CSV 导出（给 Excel 看账用；备份/恢复仍然只用 JSON）
-   buildCsv 是纯函数：传 plain db，返回 { filename, label, text }，
-   便于 node 直接断言；写文件由 exportCsv 动作负责。
+   Store
+   ============================================================ */
+export const store = reactive({
+  ready: false,
+  loaded: false,
+  uid: null,                     // 登录用户 id（Storage 路径要用）
+  db: createDb(),                // 缓存：主数据 + 已拉取的订单/流水
+  counts: null,                  // load_snapshot 的 counts（数据总览）
+  dash: null,                    // dashboard() 结果（今日页）
+  ordersPage: {                  // 订单页分页状态
+    rows: [], total: 0, sumPaid: 0, pendingTotal: 0,
+    limit: 30, offset: 0, loading: false, loaded: false, hasMore: false, query: null
+  },
+  details: {},                   // 订单详情缓存 id -> get_order 结果
+  detailsLoading: {},
+  stats: null,                   // stats_summary() 结果
+  statsLoading: false,
+  savedAt: null,
+  auth: { status: 'loading', phone: '', error: '' },   // loading | anon | ready
+  sync: { state: 'idle', error: '' },                  // idle | saving | saved | unsynced
+  ui: {
+    view: 'today',
+    sheet: null,          // { type, ...payload }
+    toasts: [],
+    cart: [],             // [{ key, type, id, name, price, qty, gift }]
+    cartNote: '',
+    cartOpen: false,
+    register: { search: '', series: '全部', onlyFrequent: false }
+  }
+});
+
+let toastSeq = 0;
+export function toast(message, kind = 'info') {
+  const id = ++toastSeq;
+  store.ui.toasts.push({ id, message, kind });
+  setTimeout(() => {
+    const i = store.ui.toasts.findIndex(t => t.id === id);
+    if (i >= 0) store.ui.toasts.splice(i, 1);
+  }, kind === 'warn' ? 4200 : 2800);
+}
+
+/* ============================================================
+   CSV 导出（给 Excel 看账用）
+   buildCsv 是纯函数：传 plain db，返回 { filename, label, text }
    ============================================================ */
 const CSV_KINDS = {
   orders:   { label: '订单',     header: ['订单号', '状态', '下单时间', '收款时间', '收款渠道', '件数', '应收', '实收', '备注'] },
@@ -207,331 +291,196 @@ export function buildCsv(kind, db) {
   return { filename: `摆摊订单管家-${kindCfg.label}-${ymd(new Date())}.csv`, label: kindCfg.label, text };
 }
 
-/* 老数据补字段：只补分类树与标签，不动订单和库存 */
-function migrate(db) {
-  if (!db || typeof db !== 'object') return createDb();
-  ['products', 'combos', 'orders', 'orderItems', 'adjustments', 'movements', 'alerts'].forEach(k => {
-    if (!Array.isArray(db[k])) db[k] = [];
-  });
-  if (!db.categories) db.categories = [];
-  if (!db.tags) db.tags = [];
-  if (!db.seq) db.seq = {};
-  if (!db.balances || typeof db.balances !== 'object') db.balances = {};
-  db.products.forEach(p => {
-    if (!Array.isArray(p.tags)) p.tags = [];
-    delete p.location;
-  });
-  buildCategoryTree(db);
-  collapseCategoryDepth(db);
-  fillProductBarcodes(db);
-  db.combos.forEach(c => {
-    if (!Array.isArray(c.items)) c.items = [];
-    if (!Array.isArray(c.groups)) c.groups = [];
-    /* 旧套餐按固定商品所属中类派生出自选子套餐；items 继续留给历史订单 */
-    if (!c.groups.length) c.groups = deriveComboGroups(db, c.items);
-    c.groups = c.groups.map(g => {
-      const mid = categoryById(db, g.category_id);
-      if (!mid) return g;
-      let productIds = Array.isArray(g.product_ids) ? g.product_ids.map(Number).filter(Boolean) : [];
-      if (!productIds.length) {
-        const fromItems = [];
-        (c.items || []).forEach(it => {
-          const p = productById(db, it.product_id);
-          if (p && p.category_id && categoryPath(db, p.category_id).some(cat => cat.id === mid.id) && !fromItems.includes(p.id)) {
-            fromItems.push(p.id);
-          }
-        });
-        productIds = fromItems.length ? fromItems : productsInMid(db, mid.id).map(p => p.id);
-      }
-      return {
-        category_l1_id: mid.parent_id || null,
-        category_id: mid.id,
-        quantity: Math.max(1, int(g.quantity) || 1),
-        product_ids: productIds
-      };
-    });
-  });
-  db.tags = Array.from(new Set([...db.tags, ...db.products.flatMap(p => p.tags || [])]));
-  return db;
-}
-
 /* ============================================================
-   Store
+   云端快照装配
    ============================================================ */
-export const store = reactive({
-  ready: false,
-  loaded: false,                 // 云端数据是否已拉下来
-  version: 0,                    // 云端行版本号，乐观并发用
-  db: createDb(),                // 登录并加载后才有内容
-  savedAt: null,
-  auth: { status: 'loading', phone: '', error: '' },   // loading | anon | ready
-  sync: { state: 'idle', error: '' },                  // idle | pending | saving | saved | unsynced | conflict
-  ui: {
-    view: 'today',
-    sheet: null,          // { type, ...payload }
-    toasts: [],
-    cart: [],             // [{ key, type, id, name, price, qty, gift }]
-    cartNote: '',
-    cartOpen: false,
-    register: { search: '', series: '全部', onlyFrequent: false }
-  }
-});
 
-let toastSeq = 0;
-export function toast(message, kind = 'info') {
-  const id = ++toastSeq;
-  store.ui.toasts.push({ id, message, kind });
-  setTimeout(() => {
-    const i = store.ui.toasts.findIndex(t => t.id === id);
-    if (i >= 0) store.ui.toasts.splice(i, 1);
-  }, kind === 'warn' ? 4200 : 2800);
+/* 服务端返回的 numeric 序列化为 JSON number，个别字段可能是字符串，统一转 */
+function normalizeProduct(p) {
+  const out = { ...p };
+  if (out.category === undefined) out.category = out.category_name || '';
+  delete out.category_name;
+  if (!Array.isArray(out.tags)) out.tags = [];
+  return out;
 }
 
-/* ============================================================
-   云端保存：300ms 防抖 → 串行提交 → 失败重试
-   v1 = 整份 JSON 一行（?sync=v1 应急）；v2 = 分表增量（默认）
-   ============================================================ */
-const SAVE_DEBOUNCE = 300;
-const RETRY_DELAY = 5000;
-const MAX_RETRY = 3;
-
-let saveTimer = null;
-let retryTimer = null;
-let saving = false;
-let dirtyAgain = false;
-let retryLeft = MAX_RETRY;
-
-export function scheduleSave() {
-  if (PREVIEW) { store.sync.state = 'local'; return; }
-  if (store.auth.status !== 'ready') return;
-  if (saveTimer) clearTimeout(saveTimer);
-  store.sync.state = 'pending';
-  saveTimer = setTimeout(() => { saveTimer = null; flushSave(); }, SAVE_DEBOUNCE);
+function mergeProduct(rec) {
+  const p = normalizeProduct(rec);
+  const i = store.db.products.findIndex(x => Number(x.id) === Number(p.id));
+  if (i >= 0) store.db.products.splice(i, 1, { ...store.db.products[i], ...p });
+  else store.db.products.push(p);
 }
 
-async function flushSave() {
+/* 收款码路径 → 签名 URL（异步 hydrate，失败留空） */
+async function hydratePaymentCodes(paths) {
+  const out = {};
+  await Promise.all(Object.entries(paths || {}).map(async ([ch, path]) => {
+    out[ch] = await signPaymentCodePath(path);
+  }));
+  store.db.paymentCodes = out;
+}
+
+/* 把 load_snapshot 的返回装配进 store（orders/orderItems 由各页按需拉取） */
+function assembleSnapshot(d) {
+  const db = store.db;
+  db.categories = d.categories || [];
+  db.products = (d.products || []).map(normalizeProduct);
+  db.tags = d.tags || [];
+  db.combos = d.combos || [];
+  db.balances = d.balances && typeof d.balances === 'object' ? d.balances : {};
+  db.alerts = d.alerts || [];
+  db.movements = d.movements || [];
+  db.orders = [];
+  db.orderItems = [];
+  db.adjustments = [];
+  db.seq = { order: 1, item: 1, adj: 1, mov: 1, alert: 1, product: 1, combo: 1, category: 1 };
+  store.counts = d.counts || null;
+  migrate(db);
+  store.db.paymentCodePaths = d.paymentCodes || {};
+  hydratePaymentCodes(d.paymentCodes || {});
+}
+
+/* 后台静默刷新主数据（写操作成功后调用，不阻断 UI） */
+let refreshing = null;
+export async function refreshMaster() {
   if (PREVIEW) return;
-  if (store.auth.status !== 'ready') return;
-  if (saving) { dirtyAgain = true; return; }
-  if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
-  saving = true;
-  try {
-    if (FORCE_V1) await flushSaveV1();
-    else if (v2.ready) await flushSaveV2();
-    /* v2 未就绪（登录后加载失败）时不落盘：防止旧 app_state 数据覆盖云端 */
-  } finally {
-    saving = false;
-    if (dirtyAgain) { dirtyAgain = false; flushSave(); }
-  }
+  if (refreshing) return refreshing;
+  refreshing = (async () => {
+    try {
+      const res = await rpc('load_snapshot');
+      if (res.ok) assembleSnapshot(res.data);
+    } finally { refreshing = null; }
+  })();
+  return refreshing;
 }
 
-/* 手动「重试保存」：清掉退避计时，立刻再来一次 */
-export function retrySave() {
-  if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
-  retryLeft = MAX_RETRY;
-  return flushSave();
+/* ---------- dashboard ---------- */
+export async function ensureDashboard(force) {
+  if (PREVIEW) return;
+  if (!force && store.dash) return;
+  const res = await rpc('dashboard');
+  if (res.ok) store.dash = res.data;
 }
 
-/* ---------- v1：整份 JSON 一行（应急回退用） ---------- */
-async function flushSaveV1() {
-  store.sync.state = 'saving';
-  const res = await saveState(store.version, toPlain(store.db));
-  if (res.ok && !res.conflict) {
-    store.version = res.version;
-    store.savedAt = new Date().toISOString();
-    store.sync.state = 'saved';
-    store.sync.error = '';
-    retryLeft = MAX_RETRY;
-  } else if (res.ok && res.conflict) {
-    store.sync.state = 'conflict';
-    await pullFromCloud();
-    toast('数据已在其他设备更新，已刷新为最新，请重试刚才的操作', 'warn');
-  } else {
-    store.sync.state = 'unsynced';
-    store.sync.error = res.error || '保存失败';
-    if (!retryTimer && retryLeft > 0) {
-      retryLeft -= 1;
-      retryTimer = setTimeout(() => { retryTimer = null; flushSave(); }, RETRY_DELAY);
-    }
-  }
+/* ---------- 订单分页查询 ---------- */
+export async function fetchOrdersPage(query, opts = {}) {
+  if (PREVIEW) return;
+  const page = store.ordersPage;
+  const q = {
+    from: query.from || null, to: query.to || null,
+    status: query.status || null, channel: query.channel || null,
+    keyword: query.keyword || null
+  };
+  const reset = !!opts.reset;
+  const offset = reset ? 0 : page.offset;
+  page.loading = true;
+  const res = await rpc('list_orders', {
+    p_from: q.from, p_to: q.to, p_status: q.status, p_channel: q.channel,
+    p_keyword: q.keyword, p_limit: page.limit, p_offset: offset
+  });
+  page.loading = false;
+  if (!res.ok) { store.sync.error = res.error; return; }
+  const d = res.data || {};
+  page.query = q;
+  page.total = Number(d.total) || 0;
+  page.sumPaid = Number(d.sumPaid) || 0;
+  page.pendingTotal = Number(d.pendingTotal) || 0;
+  page.offset = offset + (d.rows ? d.rows.length : 0);
+  page.hasMore = page.offset < page.total;
+  page.loaded = true;
+  page.rows = reset ? (d.rows || []) : page.rows.concat(d.rows || []);
 }
 
-/* ---------- v2 公共：id 区间申领 ---------- */
-/* 给一个 seq 键确保剩余可用 id 足够；force 时无条件重新申领 */
-export async function ensureRanges(force) {
-  const seq = store.db.seq || {};
-  const jobs = [];
-  for (const key of SEQ_KEYS) {
-    const used = Number(seq[key]);
-    const cursor = Number.isFinite(used) ? used : 1;
-    const range = v2.ranges[key];
-    const need = force || !range || cursor < range.start || (range.end - cursor) < CLAIM_MARGIN;
-    if (!need) continue;
-    const floor = Math.max(0, cursor - 1);
-    jobs.push(claimIdRange(key, floor, CLAIM_CHUNK).then(res => {
-      if (!res.ok) { store.sync.error = res.error || '申领编号失败'; return; }
-      const start = res.base - CLAIM_CHUNK + 1;
-      if (!Number.isFinite(seq[key]) || seq[key] < start) seq[key] = start;
-      v2.ranges[key] = { start, end: res.base };
-    }));
-  }
-  await Promise.all(jobs);
+/* ---------- 订单详情 ---------- */
+function buildTimeline(o) {
+  const ev = [{ at: o.created_at, kind: 'create', text: '创建订单' }];
+  if (o.paid_at) ev.push({ at: o.paid_at, kind: 'pay', text: '确认收款' });
+  if (o.cancelled_at) ev.push({ at: o.cancelled_at, kind: 'cancel', text: o.status === 'cancelled' && o.paid_at ? '冲销并回补库存' : '取消订单' });
+  return ev.sort((a, b) => (a.at < b.at ? -1 : 1));
 }
 
-/* ---------- v2 公共：快照与装配 ---------- */
-function takeSnapshot(db) {
-  const tables = {};
-  SYNC_TABLES.forEach(key => { tables[key] = buildTableSnapshot(db[key]); });
-  return { tables, meta: buildMetaSnapshot(db) };
+export async function fetchOrderDetail(id) {
+  if (store.details[id]) return store.details[id];
+  if (PREVIEW) {
+    /* 预览模式本地生成同样形状 */
+    const o = orderById(store.db, id);
+    if (!o) return null;
+    const items = itemsOfOrder(store.db, id).map(it => {
+      if (it.item_type === 'combo') {
+        const parts = comboPartsOfOrderItem(store.db, it).map(part => ({
+          product: productById(store.db, part.product_id), quantity: part.quantity
+        }));
+        return { ...it, parts };
+      }
+      return { ...it, product: productById(store.db, it.product_id), parts: [] };
+    });
+    const detail = {
+      order: o, items,
+      adjustments: adjustmentsOfOrder(store.db, id),
+      movements: store.db.movements
+        .filter(m => m.ref_type === 'order' && m.ref_id === id)
+        .map(m => ({ ...m, product: productById(store.db, m.product_id) }))
+        .sort((a, b) => (a.created_at < b.created_at ? -1 : 1)),
+      timeline: buildTimeline(o)
+    };
+    store.details[id] = detail;
+    return detail;
+  }
+  store.detailsLoading[id] = true;
+  const res = await rpc('get_order', { p_id: id });
+  store.detailsLoading[id] = false;
+  if (!res.ok || !res.data) { toast(res.error || '读取订单详情失败', 'warn'); return null; }
+  const d = res.data;
+  const items = (d.items || []).map(it => {
+    const parts = (it.combo_selections || []).flatMap(sel =>
+      (sel.items || []).map(x => ({
+        product: productById(store.db, Number(x.product_id)),
+        quantity: int(x.quantity)
+      })));
+    return {
+      ...it, parts,
+      product: it.product_id ? productById(store.db, Number(it.product_id)) : null
+    };
+  });
+  const detail = {
+    order: d.order,
+    items,
+    adjustments: d.adjustments || [],
+    movements: (d.movements || []).map(m => ({
+      ...m, product: productById(store.db, Number(m.product_id))
+    })),
+    timeline: buildTimeline(d.order)
+  };
+  store.details[id] = detail;
+  return detail;
 }
 
-/* 把 load_app_data 的返回装配成本地 db（返回的是普通对象，非响应式） */
-function assembleDb(d) {
-  const db = createDb();
-  SYNC_TABLES.forEach(key => { db[key] = rowsToRecords(d[key]); });
-  const meta = d.meta || {};
-  db.tags = Array.isArray(meta.tags) ? meta.tags : [];
-  db.balances = meta.balances && typeof meta.balances === 'object' ? meta.balances : {};
-  db.paymentCodes = meta.paymentCodes && typeof meta.paymentCodes === 'object' ? meta.paymentCodes : {};
-  return migrate(db);
-}
-
-/* 首次迁移 / 全新账号：把整份 db 全量写进分表（meta 最后写，作为迁移完成标记） */
-async function pushAllTables(db) {
-  for (const key of SYNC_TABLES) {
-    const res = await saveTableRows(key, JSON.parse(JSON.stringify(db[key])), []);
-    if (!res.ok) { store.sync.error = res.error || '保存到云端失败'; return false; }
-  }
-  const res = await saveMetaDoc({ schema_version: 2, ...metaPart(db) });
-  if (!res.ok) { store.sync.error = res.error || '保存到云端失败'; return false; }
-  return true;
-}
-
-/* ---------- v2 主保存：按表 diff 增量上传 ---------- */
-async function flushSaveV2() {
-  store.sync.state = 'saving';
-  /* 先拍平：后续 diff 与上传都用同一份普通对象，
-     保存期间的新改动不进本轮，留给下一轮 diff（快照语义保证不丢） */
-  const db2 = toPlain(store.db);
-  await ensureRanges(false);
-
-  let touched = false;
-  let failed = false;
-  for (const key of SYNC_TABLES) {
-    const { rows, deleteIds } = diffTable(db2[key], v2.snap.tables[key]);
-    if (!rows.length && !deleteIds.length) continue;
-    touched = true;
-    const res = await saveTableRows(key, rows.map(r => r.rec), deleteIds);
-    if (res.ok) {
-      rows.forEach(({ rec, fp }) => v2.snap.tables[key].set(rec.id, fp));
-      deleteIds.forEach(id => v2.snap.tables[key].delete(id));
-    } else {
-      failed = true;
-      store.sync.error = res.error || '保存到云端失败';
-    }
-  }
-  const metaFp = buildMetaSnapshot(db2);
-  if (metaFp !== v2.snap.meta) {
-    touched = true;
-    const res = await saveMetaDoc({ schema_version: 2, ...metaPart(db2) });
-    if (res.ok) v2.snap.meta = metaFp;
-    else { failed = true; store.sync.error = res.error || '保存到云端失败'; }
-  }
-
-  if (touched && !failed) {
-    store.sync.state = 'saved';
-    store.sync.error = '';
-    store.savedAt = new Date().toISOString();
-    retryLeft = MAX_RETRY;
-  } else if (failed) {
-    store.sync.state = 'unsynced';
-    if (!retryTimer && retryLeft > 0) {
-      retryLeft -= 1;
-      retryTimer = setTimeout(() => { retryTimer = null; flushSave(); }, RETRY_DELAY);
-    }
-  } else {
-    store.sync.state = 'saved';
-  }
+/* ---------- 统计 ---------- */
+export async function fetchStats(from, to) {
+  if (PREVIEW) return null;
+  store.statsLoading = true;
+  const res = await rpc('stats_summary', { p_from: from, p_to: to });
+  store.statsLoading = false;
+  if (!res.ok) { toast(res.error || '读取统计失败', 'warn'); return null; }
+  store.stats = res.data;
+  return store.stats;
 }
 
 /* ============================================================
    登录后的数据加载
-   v2：load_app_data 一次拉全量 → 已迁移直接装配；
-       未迁移则读旧 app_state 行迁移进分表（原行保留作回滚）；
-       全新账号用种子数据初始化。
-   v1（?sync=v1 应急）：原样读写 app_state 一行。
    ============================================================ */
-function markV2Synced() {
-  v2.ready = true;
-  store.version = null;
-  store.savedAt = new Date().toISOString();
-  store.sync.state = 'saved';
-  store.sync.error = '';
-}
-
-function loadFailed(error) {
-  store.sync.state = 'unsynced';
-  store.sync.error = error || '读取云端数据失败';
-  return false;
-}
-
 async function pullFromCloud() {
-  if (FORCE_V1) return pullFromCloudV1();
-  const res = await loadAppData();
-  if (!res.ok) return loadFailed(res.error);
-
-  const d = res.data;
-  if (d && d.meta && d.meta.schema_version === 2) {
-    store.db = assembleDb(d);
-    await ensureRanges(true);
-    if (store.sync.error) return loadFailed(store.sync.error);
-    v2.snap = takeSnapshot(store.db);
-    markV2Synced();
-    return true;
-  }
-
-  /* 未迁移：读旧整份数据（或全新账号灌种子） */
-  const legacy = await loadState();
-  if (!legacy.ok) return loadFailed(legacy.error);
-  if (legacy.exists) {
-    store.db = migrate(legacy.doc);
-    store.version = legacy.version;
-  } else {
-    store.db = buildSeedDb();
-    store.version = 0;
-  }
-  await ensureRanges(true);
-  if (store.sync.error) return loadFailed(store.sync.error);
-  const ok = await pushAllTables(store.db);
-  if (!ok) return loadFailed(store.sync.error || '迁移到分表存储失败');
-  v2.snap = takeSnapshot(store.db);
-  markV2Synced();
-  return true;
-}
-
-/* ---------- v1 应急加载：整份 JSON 一行 ---------- */
-async function pullFromCloudV1() {
-  const res = await loadState();
-  if (!res.ok) {
+  const snap = await rpc('load_snapshot');
+  if (!snap.ok) {
     store.sync.state = 'unsynced';
-    store.sync.error = res.error || '读取云端数据失败';
+    store.sync.error = snap.error || '读取云端数据失败';
     return false;
   }
-  if (!res.exists) {
-    store.db = buildSeedDb();
-    store.version = 0;
-    store.savedAt = null;
-    store.sync.state = 'pending';
-    await flushSave();
-    return true;
-  }
-  const needsBarcodes = (res.doc.products || []).some(p => !String(p.barcode || '').trim());
-  store.db = migrate(res.doc);
-  store.version = res.version;
-  store.savedAt = new Date().toISOString();
+  assembleSnapshot(snap.data);
   store.sync.state = 'saved';
   store.sync.error = '';
-  if (needsBarcodes) scheduleSave();
+  store.savedAt = new Date().toISOString();
+  await ensureDashboard(true);
   return true;
 }
 
@@ -551,10 +500,12 @@ async function enterApp(session) {
   store.auth.phone = phone;
   store.auth.error = '';
   rememberPhone(phone);
+  const u = (session && session.user) || {};
+  store.uid = u.id || u.uid || null;
   store.auth.status = 'ready';
   await pullFromCloud();
   store.loaded = true;
-  /* 首登写种子数据失败也不白屏：留在应用里，顶部显示未同步 */
+  /* 首屏拉取失败也不白屏：留在应用里，顶部显示未同步 */
   if (store.sync.state === 'unsynced') toast(store.sync.error || '云端数据读取失败', 'warn');
 }
 
@@ -624,17 +575,16 @@ export async function changePassword(oldPassword, newPassword) {
 
 export async function logout() {
   if (PREVIEW) { toast('预览模式无需退出', 'info'); return; }
-  if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
-  if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
-  if (store.sync.state === 'pending' || store.sync.state === 'unsynced') await flushSave();
   await cloudSignOut();
   store.db = createDb();
-  store.version = 0;
+  store.counts = null;
+  store.dash = null;
+  store.ordersPage = { rows: [], total: 0, sumPaid: 0, pendingTotal: 0, limit: 30, offset: 0, loading: false, loaded: false, hasMore: false, query: null };
+  store.details = {};
+  store.stats = null;
+  store.uid = null;
   store.savedAt = null;
   store.loaded = false;
-  v2.ready = false;
-  v2.snap = null;
-  v2.ranges = {};
   store.auth = { status: 'anon', phone: '', error: '' };
   store.sync = { state: 'idle', error: '' };
   store.ui.view = 'today';
@@ -644,44 +594,42 @@ export async function logout() {
   store.ui.moreOpen = false;
 }
 
-/* 页面被切到后台时立刻补一次保存，避免最后 300ms 的改动丢掉 */
-function flushBeforeHide() {
-  if (store.auth.status === 'ready' && (store.sync.state === 'pending' || store.sync.state === 'unsynced')) flushSave();
-}
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') flushBeforeHide();
-});
-window.addEventListener('pagehide', flushBeforeHide);
-
-/* 包一层：任何规则错误都转成提示，视图里不用到处 try/catch */
-function act(fn, okMsg) {
+/* 包一层：RPC 动作统一走这里，错误转提示、同步态转指示灯 */
+async function actR(fn, okMsg) {
+  if (PREVIEW) {
+    try {
+      const res = fn();
+      if (okMsg) toast(okMsg, 'ok');
+      return typeof res === 'object' && res !== null && 'ok' in res ? res : { ok: true, data: res };
+    } catch (e) {
+      toast(e && e.message ? e.message : '操作失败，请重试', 'warn');
+      return { ok: false, error: e };
+    }
+  }
+  store.sync.state = 'saving';
   try {
-    const res = fn();
-    scheduleSave();
-    if (okMsg) toast(okMsg, 'ok');
-    return { ok: true, data: res };
+    const res = await fn();
+    if (res.ok) {
+      store.sync.state = 'saved';
+      store.sync.error = '';
+      store.savedAt = new Date().toISOString();
+      if (okMsg) toast(okMsg, 'ok');
+    } else {
+      store.sync.state = 'unsynced';
+      store.sync.error = res.error || '操作失败，请重试';
+      toast(res.error || '操作失败，请重试', 'warn');
+    }
+    return res;
   } catch (e) {
-    toast(e && e.message ? e.message : '操作失败，请重试', 'warn');
+    store.sync.state = 'unsynced';
+    store.sync.error = (e && e.message) || '网络连接失败';
+    toast((e && e.message) || '操作失败，请重试', 'warn');
     return { ok: false, error: e };
   }
 }
 
-/* 批量导入时按 `大类>中类` 找到分类；不存在就逐级建出来，返回最终分类 id。
-   只在用户勾选了「自动创建分类」时才会走到这里。建不出来就返回能建到的那一层，不影响商品写入。 */
-function ensureCategoryId(db, raw) {
-  const hit = matchCategoryPath(db, raw);
-  if (hit.id) {
-    /* 大类在、中类缺：补一个中类 */
-    if (hit.miss && hit.missParent) {
-      try {
-        const c = upsertCategory(db, { name: String(hit.miss).slice(0, 12), parent_id: hit.id });
-        return c.id;
-      } catch (e) {
-        return hit.id;
-      }
-    }
-    return hit.id;
-  }
+/* 批量导入时按 `大类>中类` 建分类（云端 save_category），返回最终分类 id */
+async function ensureCategoryIdRemote(raw, created) {
   const parts = String(raw || '')
     .split(/[>＞/／]/)
     .map(s => s.trim())
@@ -690,16 +638,18 @@ function ensureCategoryId(db, raw) {
   let parentId = null;
   for (const part of parts) {
     const name = part.slice(0, 12);
-    const found = db.categories.find(c => (c.parent_id || null) === parentId && c.name === name);
-    if (found) {
-      parentId = found.id;
-      continue;
+    const found = store.db.categories.find(c => (c.parent_id || null) === parentId && c.name === name)
+      || (created.get(parentId + '/' + name) !== undefined ? { id: created.get(parentId + '/' + name) } : null);
+    if (found) { parentId = found.id; continue; }
+    const res = await rpc('save_category', { p_payload: { name, parent_id: parentId } });
+    if (!res.ok) return parentId;
+    const cat = res.data && res.data.category;
+    if (!cat) return parentId;
+    if (!store.db.categories.some(c => Number(c.id) === Number(cat.id))) {
+      store.db.categories.push({ ...cat, sort: store.db.categories.length });
     }
-    try {
-      parentId = upsertCategory(db, { name, parent_id: parentId }).id;
-    } catch (e) {
-      return parentId;
-    }
+    created.set((parentId || '') + '/' + name, cat.id);
+    parentId = cat.id;
   }
   return parentId;
 }
@@ -717,7 +667,6 @@ export const seriesList = computed(() => {
 });
 
 /* ---------- 分类与标签 ---------- */
-/* 扁平化的分类树，带层级和商品数，便于直接渲染 */
 export const categoryRows = computed(() => {
   const out = [];
   const walk = (parentId, depth) => {
@@ -744,19 +693,10 @@ export const tagLibrary = computed(() =>
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh-Hans-CN'))
 );
 
-/* 近 30 天卖得最多的商品，开单页置顶（少点几下） */
-export const frequentIds = computed(() => {
-  const since = addDays(startOfDay(), -30).toISOString();
-  const count = {};
-  store.db.orders.forEach(o => {
-    if (o.status !== 'paid' || !o.paid_at || o.paid_at < since) return;
-    itemsOfOrder(store.db, o.id).forEach(it => {
-      if (it.item_type === 'product') count[it.product_id] = (count[it.product_id] || 0) + int(it.quantity);
-      else comboPartsOfOrderItem(store.db, it).forEach(x => { count[x.product_id] = (count[x.product_id] || 0) + x.quantity; });
-    });
-  });
-  return Object.entries(count).sort((a, b) => b[1] - a[1]).map(x => Number(x[0]));
-});
+/* 近 30 天卖得最多的商品（服务端聚合），开单页置顶 */
+export const frequentIds = computed(() =>
+  (store.dash && Array.isArray(store.dash.frequent) ? store.dash.frequent : []).map(Number)
+);
 
 /* 库存状态：none 未盘点 / neg 负库存 / low 低于阈值 / ok 正常 */
 export function stockState(productId) {
@@ -782,265 +722,522 @@ export const openAlerts = computed(() =>
     .map(a => ({ ...a, product: productById(store.db, a.product_id) }))
     .sort((x, y) => (x.created_at < y.created_at ? 1 : -1)));
 
+/* 待收款订单：dashboard 聚合（今日页与导航徽标共用） */
 export const pendingOrders = computed(() =>
-  store.db.orders.filter(o => o.status === 'pending')
+  ((store.dash && store.dash.pending) || [])
+    .map(o => ({ ...o, total_amount: num(o.total_amount) }))
     .sort((a, b) => (a.created_at < b.created_at ? -1 : 1)));
 
+/* 订单缓存池按创建时间倒序（已拉到的部分；全量清单在 ordersPage） */
 export const ordersDesc = computed(() =>
   [...store.db.orders].sort((a, b) => (a.created_at < b.created_at ? 1 : -1)));
 
 /* 最近一个有营业的日子（今天没开单时用它做回顾） */
 export const lastBusinessDay = computed(() => {
-  const days = new Set(store.db.orders.filter(o => o.status === 'paid' && o.paid_at).map(o => ymd(new Date(o.paid_at))));
-  if (!days.size) return null;
-  return Array.from(days).sort().pop();
+  const days = (store.dash && store.dash.days) || [];
+  const withRev = days.filter(d => num(d.revenue) > 0).map(d => d.date);
+  if (!withRev.length) {
+    if (store.dash && store.dash.lastDay && store.dash.lastDay.date) return store.dash.lastDay.date;
+    return null;
+  }
+  return withRev[withRev.length - 1];
 });
 
-function daySummary(dateStr) {
-  const from = new Date(dateStr + 'T00:00:00').getTime();
-  const to = from + 86400000;
-  const paid = store.db.orders.filter(o => {
-    if (o.status !== 'paid' || !o.paid_at) return false;
-    const t = new Date(o.paid_at).getTime();
-    return t >= from && t < to;
-  });
-  const revenue = r2(paid.reduce((t, o) => t + num(o.paid_amount), 0));
-  const pieces = paid.reduce((t, o) => t + int(o.item_count), 0);
-  const cancelled = store.db.orders.filter(o => {
-    if (o.status !== 'cancelled' || !o.cancelled_at) return false;
-    const t = new Date(o.cancelled_at).getTime();
-    return t >= from && t < to;
-  }).length;
-  return {
-    date: dateStr, revenue, count: paid.length, pieces, cancelled,
-    avg: paid.length ? r2(revenue / paid.length) : 0,
-    channels: channelSplit(paid)
-  };
-}
-function channelSplit(orders) {
-  const map = {};
-  orders.forEach(o => {
-    const k = o.channel || 'other';
-    map[k] = r2((map[k] || 0) + num(o.paid_amount));
-  });
-  return map;
-}
-
-export const todaySummary = computed(() => daySummary(ymd(startOfDay())));
-export const yesterdaySummary = computed(() => daySummary(ymd(addDays(startOfDay(), -1))));
-export const lastDaySummary = computed(() => {
-  const d = lastBusinessDay.value;
-  return d ? daySummary(d) : null;
+const EMPTY_DAY = date => ({ date, revenue: 0, count: 0, pieces: 0, cancelled: 0, avg: 0, channels: {} });
+const dayShape = d => ({
+  date: d.date,
+  revenue: num(d.revenue),
+  count: int(d.count),
+  pieces: int(d.pieces),
+  cancelled: int(d.cancelled),
+  avg: num(d.avg),
+  channels: d.channels && typeof d.channels === 'object' ? d.channels : {}
 });
 
-/* 近 n 天营收，含今天；用于迷你柱状图。endDate 可指定截止日（如最近营业日） */
+export const todaySummary = computed(() =>
+  store.dash && store.dash.today ? dayShape(store.dash.today) : EMPTY_DAY(ymd(startOfDay())));
+export const yesterdaySummary = computed(() =>
+  store.dash && store.dash.yesterday ? dayShape(store.dash.yesterday) : EMPTY_DAY(ymd(addDays(startOfDay(), -1))));
+export const lastDaySummary = computed(() =>
+  store.dash && store.dash.lastDay ? dayShape(store.dash.lastDay) : null);
+
+/* 近 n 天营收：从 dashboard 的近 30 天切片；endDate 指定截止日（如最近营业日） */
 export function recentDays(n, endDate) {
-  const end = endDate ? startOfDay(new Date(endDate + 'T00:00:00')) : startOfDay();
+  const days = (store.dash && store.dash.days) || [];
+  let idx = -1;
+  if (endDate) idx = days.findIndex(d => d.date === endDate);
   const out = [];
   for (let i = n - 1; i >= 0; i--) {
-    out.push(daySummary(ymd(addDays(end, -i))));
+    const d = idx >= 0 ? days[idx - i] : days[days.length - 1 - i];
+    if (d) out.push(dayShape(d));
+    else {
+      const base = idx >= 0 ? days[idx] : days[days.length - 1];
+      const date = base ? ymd(addDays(new Date(base.date + 'T00:00:00'), -(i))) : '';
+      out.push(EMPTY_DAY(date));
+    }
   }
   return out;
 }
 
-/* 最近 n 笔订单（含明细摘要） */
+/* 最近 n 笔订单（dashboard 聚合，含明细） */
 export function recentOrders(n) {
-  return ordersDesc.value.slice(0, n).map(o => ({ order: o, items: itemsOfOrder(store.db, o.id) }));
+  const recent = (store.dash && store.dash.recent) || [];
+  return recent.slice(0, n).map(r => ({ order: r.order, items: r.items || [] }));
 }
 
 export function orderDetail(id) {
-  const o = orderById(store.db, id);
-  if (!o) return null;
-  const items = itemsOfOrder(store.db, id).map(it => {
-    if (it.item_type === 'combo') {
-      const c = comboById(store.db, it.combo_id);
-      const parts = comboPartsOfOrderItem(store.db, it).map(part => ({
-        product: productById(store.db, part.product_id),
-        quantity: part.quantity
-      }));
-      return { ...it, combo: c, parts };
-    }
-    return { ...it, product: productById(store.db, it.product_id) };
-  });
-  return {
-    order: o,
-    items,
-    adjustments: adjustmentsOfOrder(store.db, id),
-    movements: db_movementsForOrder(id),
-    timeline: buildTimeline(o, items)
-  };
-}
-function db_movementsForOrder(orderId) {
-  const o = orderById(store.db, orderId);
-  return store.db.movements
-    .filter(m => m.ref_type === 'order' && m.ref_id === orderId)
-    .map(m => ({ ...m, product: productById(store.db, m.product_id) }))
-    .sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
-}
-function buildTimeline(o) {
-  const ev = [{ at: o.created_at, kind: 'create', text: '创建订单' }];
-  if (o.paid_at) ev.push({ at: o.paid_at, kind: 'pay', text: '确认收款' });
-  if (o.cancelled_at) ev.push({ at: o.cancelled_at, kind: 'cancel', text: o.status === 'cancelled' && o.paid_at ? '冲销并回补库存' : '取消订单' });
-  return ev.sort((a, b) => (a.at < b.at ? -1 : 1));
+  return store.details[id] || null;
 }
 
 /* 数据总览，设置页用 */
-export const demoInfo = computed(() => ({
-  products: store.db.products.length,
-  onSale: store.db.products.filter(p => p.status === 'on_sale').length,
-  combos: store.db.combos.length,
-  categories: (store.db.categories || []).length,
-  tags: (store.db.tags || []).length,
-  orders: store.db.orders.length,
-  paid: store.db.orders.filter(o => o.status === 'paid').length,
-  pending: store.db.orders.filter(o => o.status === 'pending').length,
-  cancelled: store.db.orders.filter(o => o.status === 'cancelled').length,
-  movements: store.db.movements.length,
-  counted: store.db.products.filter(p => isCounted(store.db, p.id)).length,
-  alerts: store.db.alerts.filter(a => a.status === 'open').length,
-  savedAt: store.savedAt,
-  version: store.version,
-  syncMode: v2.ready ? '分表 v2' : (FORCE_V1 ? '整份 v1' : '待加载'),
-  phone: store.auth.phone,
-  syncState: store.sync.state,
-  syncError: store.sync.error
-}));
+export const demoInfo = computed(() => {
+  const c = store.counts || {};
+  return {
+    products: c.products ?? store.db.products.length,
+    onSale: store.db.products.filter(p => p.status === 'on_sale').length,
+    combos: c.combos ?? store.db.combos.length,
+    categories: (store.db.categories || []).length,
+    tags: (store.db.tags || []).length,
+    orders: c.orders ?? store.db.orders.length,
+    paid: c.paid ?? store.db.orders.filter(o => o.status === 'paid').length,
+    pending: c.pending ?? store.db.orders.filter(o => o.status === 'pending').length,
+    cancelled: c.cancelled ?? store.db.orders.filter(o => o.status === 'cancelled').length,
+    movements: c.movements ?? store.db.movements.length,
+    counted: c.counted ?? store.db.products.filter(p => isCounted(store.db, p.id)).length,
+    alerts: c.alerts ?? store.db.alerts.filter(a => a.status === 'open').length,
+    savedAt: store.savedAt,
+    syncMode: PREVIEW ? '本地预览' : '字段化 v3',
+    phone: store.auth.phone,
+    syncState: store.sync.state,
+    syncError: store.sync.error
+  };
+});
 
 /* ============================================================
    动作
    ============================================================ */
 export const actions = {
-  savePaymentCode(channel, image) {
-    return act(() => {
-      if (!['wechat', 'alipay'].includes(channel)) throw new Error('收款渠道不支持');
-      if (image && (!/^data:image\/(jpeg|png|webp);base64,/.test(image) || image.length > 4300000)) throw new Error('收款码图片格式不正确或超过 3MB');
-      const codes = { ...(store.db.paymentCodes || {}), [channel]: image || '' };
-      if (PREVIEW) {
+  /* ---------- 收款码 ---------- */
+  async savePaymentCodeFile(channel, file) {
+    if (PREVIEW) {
+      return actR(() => {
+        if (!['wechat', 'alipay'].includes(channel)) throw new Error('收款渠道不支持');
+        if (!/^data:image\/(jpeg|png|webp);base64,/.test(file.dataUrl) || file.dataUrl.length > 4300000) {
+          throw new Error('收款码图片格式不正确或超过 3MB');
+        }
+        const codes = { ...(store.db.paymentCodes || {}), [channel]: file.dataUrl };
         try { localStorage.setItem('market-pos-preview-payment-codes', JSON.stringify(codes)); }
         catch { throw new Error('本机存储空间不足，请选择较小图片'); }
-      }
-      store.db.paymentCodes = codes;
+        store.db.paymentCodes = codes;
+      }, '收款码已更新');
+    }
+    return actR(async () => {
+      if (!store.uid) return { ok: false, error: '登录状态异常，请重新登录' };
+      const old = (store.db.paymentCodePaths || {})[channel];
+      const up = await uploadPaymentCodeImage(store.uid, channel, file);
+      if (!up.ok) return up;
+      const res = await rpc('save_payment_code', {
+        p_channel: channel, p_storage_path: up.path, p_file_id: null,
+        p_mime: file.type || null, p_size: file.size || null
+      });
+      if (!res.ok) { await removeStorageObject(up.path); return res; }
+      const paths = { ...(store.db.paymentCodePaths || {}), [channel]: up.path };
+      store.db.paymentCodePaths = paths;
+      store.db.paymentCodes = { ...(store.db.paymentCodes || {}), [channel]: await signPaymentCodePath(up.path) };
+      if (old && old !== up.path) removeStorageObject(old);
+      return res;
     }, '收款码已更新');
   },
-  saveCategory(data)      { return act(() => upsertCategory(store.db, data)); },
-  moveCategory(id, direction) { return act(() => moveCategory(store.db, id, direction)); },
-  moveCategoryTo(id, targetId) { return act(() => moveCategoryTo(store.db, id, targetId)); },
-  removeCategory(id)      { return act(() => deleteCategoryRule(store.db, id)); },
-  addTag(name)            { return act(() => addTagRule(store.db, name)); },
-  renameTag(from, to)     { return act(() => renameTagRule(store.db, from, to)); },
-  removeTag(name)         { return act(() => deleteTagRule(store.db, name)); },
+  savePaymentCode(channel, image) {
+    /* 兼容旧签名（传 dataURL）：预览模式直接存；云端模式忽略 */
+    return actions.savePaymentCodeFile(channel, { dataUrl: image });
+  },
 
-  createOrder(input)      { return act(() => createOrder(store.db, input)); },
-  confirmOrder(id, input) { return act(() => confirmOrder(store.db, id, input)); },
-  cancelOrder(id, reason) { return act(() => cancelOrder(store.db, id, reason)); },
-  stockIn(items, note)    { return act(() => stockIn(store.db, items, note)); },
-  setStock(pid, counted, reason) { return act(() => setStock(store.db, pid, counted, reason)); },
-  saveProduct(data)       { return act(() => upsertProduct(store.db, data)); },
-  toggleProduct(id)       { return act(() => toggleProductStatus(store.db, id)); },
-  /* 批量导入商品：整批走一次 act()，只触发一次云端保存。
-     autoCreateCategory 为真时，分类没匹配上就按 `大类>中类` 逐级建出来，否则归入未分类。 */
-  importProducts(rows, opts = {}) {
-    return act(() => {
-      const db = store.db;
-      const ok = [];
-      const bad = [];
-      /* 批量导入时 upsertProduct 的默认 SKU 是 P+时间戳，同一个毫秒内会全部撞车，
-         所以这里给没填 SKU 的行按 P0001 递增分配，并记进 used 防止与后续行重复 */
-      const used = new Set(db.products.map(p => String(p.sku_code || '').toUpperCase()));
+  /* ---------- 分类 ---------- */
+  async saveCategory(data) {
+    if (PREVIEW) return actR(() => upsertCategory(store.db, data));
+    return actR(async () => {
+      const res = await rpc('save_category', { p_payload: data });
+      if (res.ok && res.data && res.data.category) {
+        const cat = res.data.category;
+        const i = store.db.categories.findIndex(x => Number(x.id) === Number(cat.id));
+        if (i >= 0) store.db.categories.splice(i, 1, { ...store.db.categories[i], ...cat });
+        else store.db.categories.push({ ...cat, sort: store.db.categories.length });
+      }
+      return res;
+    });
+  },
+  async moveCategory(id, direction) {
+    if (PREVIEW) return actR(() => moveCategory(store.db, id, direction));
+    return actR(async () => {
+      const res = await rpc('save_category', { p_payload: { id, direction } });
+      if (res.ok) await refreshMaster();
+      return res;
+    });
+  },
+  async moveCategoryTo(id, targetId) {
+    if (PREVIEW) return actR(() => moveCategoryTo(store.db, id, targetId));
+    return actR(async () => {
+      const res = await rpc('save_category', { p_payload: { id, target_id: targetId } });
+      if (res.ok) await refreshMaster();
+      return res;
+    });
+  },
+  async removeCategory(id) {
+    if (PREVIEW) return actR(() => deleteCategoryRule(store.db, id));
+    return actR(async () => {
+      const res = await rpc('delete_category', { p_id: id });
+      if (res.ok) {
+        const i = store.db.categories.findIndex(x => Number(x.id) === Number(id));
+        if (i >= 0) store.db.categories.splice(i, 1);
+      }
+      return res;
+    });
+  },
+
+  /* ---------- 标签 ---------- */
+  async addTag(name) {
+    if (PREVIEW) return actR(() => addTagRule(store.db, name));
+    return actR(async () => {
+      const res = await rpc('save_tag', { p_action: 'add', p_from: null, p_to: name });
+      if (res.ok && !store.db.tags.includes(name)) store.db.tags.push(name);
+      return res;
+    });
+  },
+  async renameTag(from, to) {
+    if (PREVIEW) return actR(() => renameTagRule(store.db, from, to));
+    return actR(async () => {
+      const res = await rpc('save_tag', { p_action: 'rename', p_from: from, p_to: to });
+      if (res.ok) {
+        store.db.tags = store.db.tags.map(t => (t === from ? to : t));
+        store.db.products.forEach(p => {
+          if ((p.tags || []).includes(from)) p.tags = p.tags.map(t => (t === from ? to : t));
+        });
+      }
+      return res;
+    });
+  },
+  async removeTag(name) {
+    if (PREVIEW) return actR(() => deleteTagRule(store.db, name));
+    return actR(async () => {
+      const res = await rpc('save_tag', { p_action: 'delete', p_from: name, p_to: null });
+      if (res.ok) {
+        store.db.tags = store.db.tags.filter(t => t !== name);
+        store.db.products.forEach(p => {
+          if ((p.tags || []).includes(name)) p.tags = p.tags.filter(t => t !== name);
+        });
+      }
+      return res;
+    });
+  },
+
+  /* ---------- 订单 ---------- */
+  async createOrder(input) {
+    if (PREVIEW) {
+      return actR(() => {
+        const d = createOrder(store.db, input);
+        return { ok: true, data: d };
+      });
+    }
+    return actR(async () => {
+      const res = await rpc('create_order', { p_payload: input, p_request_id: newRequestId() });
+      if (res.ok) {
+        const d = res.data;
+        if (d.order) store.db.orders.unshift(d.order);
+        if (d.items) store.db.orderItems.push(...d.items);
+        if (d.adjustment) store.db.adjustments.push(d.adjustment);
+        if (d.alerts && d.alerts.length) store.db.alerts.unshift(...d.alerts);
+        ensureDashboard(true);
+        refreshMaster();
+      }
+      return res;
+    });
+  },
+  async confirmOrder(id, input) {
+    if (PREVIEW) {
+      return actR(() => {
+        const d = confirmOrder(store.db, id, input);
+        return { ok: true, data: d };
+      });
+    }
+    return actR(async () => {
+      const res = await rpc('order_action', {
+        p_action: 'confirm',
+        p_payload: { id, ...input },
+        p_request_id: newRequestId()
+      });
+      if (res.ok) {
+        const d = res.data;
+        if (d.order) {
+          const i = store.db.orders.findIndex(o => Number(o.id) === Number(id));
+          if (i >= 0) store.db.orders.splice(i, 1, d.order); else store.db.orders.unshift(d.order);
+          const detail = store.details[id];
+          if (detail) detail.order = d.order;
+        }
+        if (d.alerts && d.alerts.length) store.db.alerts.unshift(...d.alerts);
+        ensureDashboard(true);
+        refreshMaster();
+      }
+      return res;
+    });
+  },
+  async cancelOrder(id, reason) {
+    if (PREVIEW) {
+      return actR(() => {
+        const d = cancelOrder(store.db, id, reason);
+        return { ok: true, data: d };
+      });
+    }
+    return actR(async () => {
+      const res = await rpc('order_action', {
+        p_action: 'cancel',
+        p_payload: { id, reason },
+        p_request_id: newRequestId()
+      });
+      if (res.ok) {
+        const d = res.data;
+        if (d.order) {
+          const i = store.db.orders.findIndex(o => Number(o.id) === Number(id));
+          if (i >= 0) store.db.orders.splice(i, 1, d.order); else store.db.orders.unshift(d.order);
+          const detail = store.details[id];
+          if (detail) detail.order = d.order;
+        }
+        ensureDashboard(true);
+        refreshMaster();
+      }
+      return res;
+    });
+  },
+
+  /* ---------- 库存 ---------- */
+  async stockIn(items, note) {
+    if (PREVIEW) {
+      return actR(() => {
+        stockIn(store.db, items, note);
+        return { ok: true };
+      });
+    }
+    return actR(async () => {
+      const res = await rpc('stock_action', {
+        p_action: 'in', p_payload: { items, note }, p_request_id: newRequestId()
+      });
+      if (res.ok && res.data && Array.isArray(res.data.written)) {
+        res.data.written.forEach(w => {
+          if (w.product_id !== undefined) store.db.balances = { ...store.db.balances, [String(w.product_id)]: w.balance };
+        });
+        refreshMaster();
+      }
+      return res;
+    });
+  },
+  async setStock(pid, counted, reason) {
+    if (PREVIEW) {
+      return actR(() => {
+        setStock(store.db, pid, counted, reason);
+        return { ok: true };
+      });
+    }
+    return actR(async () => {
+      const res = await rpc('stock_action', {
+        p_action: 'set', p_payload: { product_id: pid, counted, note: reason }, p_request_id: newRequestId()
+      });
+      if (res.ok && res.data && Array.isArray(res.data.written) && res.data.written.length) {
+        const w = res.data.written[0];
+        if (w.product_id !== undefined) store.db.balances = { ...store.db.balances, [String(w.product_id)]: w.balance };
+        refreshMaster();
+      }
+      return res;
+    });
+  },
+
+  /* ---------- 商品 ---------- */
+  async saveProduct(data) {
+    if (PREVIEW) return actR(() => upsertProduct(store.db, data));
+    return actR(async () => {
+      const res = await rpc('save_product', { p_payload: data, p_request_id: newRequestId() });
+      if (res.ok && res.data && res.data.product) mergeProduct(res.data.product);
+      return res;
+    });
+  },
+  async toggleProduct(id) {
+    if (PREVIEW) return actR(() => toggleProductStatus(store.db, id));
+    return actR(async () => {
+      const res = await rpc('toggle_product', { p_id: id });
+      if (res.ok && res.data && res.data.product) mergeProduct(res.data.product);
+      return res;
+    });
+  },
+  /* 批量导入商品：服务端单事务、单行失败不影响其他行 */
+  async importProducts(rows, opts = {}) {
+    if (PREVIEW) {
+      return actR(() => {
+        const db = store.db;
+        const ok = [];
+        const bad = [];
+        const used = new Set(db.products.map(p => String(p.sku_code || '').toUpperCase()));
+        let seq = 1;
+        const autoSku = () => {
+          let sku;
+          do { sku = 'P' + String(seq).padStart(4, '0'); seq += 1; } while (used.has(sku));
+          used.add(sku);
+          return sku;
+        };
+        (rows || []).forEach(row => {
+          try {
+            const payload = { ...row };
+            if (!payload.category_id && opts.autoCreateCategory && row.categoryRaw) {
+              const hit = matchCategoryPath(db, row.categoryRaw);
+              payload.category_id = hit.id || null;
+            }
+            if (!String(payload.sku_code || '').trim()) payload.sku_code = autoSku();
+            delete payload.categoryRaw;
+            delete payload.categoryLabel;
+            delete payload.categoryMiss;
+            delete payload.errors;
+            delete payload.warns;
+            delete payload.line;
+            const saved = upsertProduct(db, payload);
+            used.add(String(saved.sku_code || '').toUpperCase());
+            ok.push(saved);
+          } catch (e) {
+            bad.push({ name: row.name || '', line: row.line, error: e && e.message ? e.message : '写入失败' });
+          }
+        });
+        return { ok: true, data: { ok, bad } };
+      });
+    }
+    return actR(async () => {
+      const used = new Set(store.db.products.map(p => String(p.sku_code || '').toUpperCase()));
       let seq = 1;
       const autoSku = () => {
         let sku;
-        do {
-          sku = 'P' + String(seq).padStart(4, '0');
-          seq += 1;
-        } while (used.has(sku));
+        do { sku = 'P' + String(seq).padStart(4, '0'); seq += 1; } while (used.has(sku));
         used.add(sku);
         return sku;
       };
-      (rows || []).forEach(row => {
-        try {
-          const payload = { ...row };
-          if (!payload.category_id && opts.autoCreateCategory && row.categoryRaw) {
-            payload.category_id = ensureCategoryId(db, row.categoryRaw);
-          }
-          if (!String(payload.sku_code || '').trim()) payload.sku_code = autoSku();
-          delete payload.categoryRaw;
-          delete payload.categoryLabel;
-          delete payload.categoryMiss;
-          delete payload.errors;
-          delete payload.warns;
-          delete payload.line;
-          const saved = upsertProduct(db, payload);
-          used.add(String(saved.sku_code || '').toUpperCase());
-          ok.push(saved);
-        } catch (e) {
-          bad.push({ name: row.name || '', line: row.line, error: e && e.message ? e.message : '写入失败' });
+      const created = new Map();
+      const payloadRows = [];
+      for (const row of (rows || [])) {
+        const payload = { ...row };
+        if (!payload.category_id && opts.autoCreateCategory && row.categoryRaw) {
+          payload.category_id = await ensureCategoryIdRemote(row.categoryRaw, created) || null;
         }
-      });
-      return { ok, bad };
+        if (!String(payload.sku_code || '').trim()) payload.sku_code = autoSku();
+        delete payload.categoryRaw;
+        delete payload.categoryLabel;
+        delete payload.categoryMiss;
+        delete payload.errors;
+        delete payload.warns;
+        delete payload.line;
+        payloadRows.push(payload);
+      }
+      if (!payloadRows.length) return { ok: false, error: '没有可导入的行' };
+      const res = await rpc('import_products', { p_rows: payloadRows, p_request_id: newRequestId() });
+      if (res.ok && res.data) {
+        (res.data.ok || []).forEach(rec => mergeProduct(rec));
+        /* 导入可能带建了新分类，静默刷新一遍主数据 */
+        refreshMaster();
+      }
+      return res;
     });
   },
-  saveCombo(data)         { return act(() => upsertCombo(store.db, data)); },
-  deleteCombo(id)         { return act(() => deleteCombo(store.db, id)); },
-  resolveAlert(id, note)  { return act(() => resolveAlert(store.db, id, note)); },
-  syncAlerts()            { return act(() => syncAlerts(store.db)); },
 
-  resetDemo() {
-    store.db = buildSeedDb();
-    scheduleSave();
-    toast('已恢复初始历史数据', 'ok');
+  /* ---------- 套餐 ---------- */
+  async saveCombo(data) {
+    if (PREVIEW) return actR(() => upsertCombo(store.db, data));
+    return actR(async () => {
+      const res = await rpc('save_combo', { p_payload: data });
+      if (res.ok && res.data && res.data.combo) {
+        const c = res.data.combo;
+        const i = store.db.combos.findIndex(x => Number(x.id) === Number(c.id));
+        if (i >= 0) store.db.combos.splice(i, 1, { ...store.db.combos[i], ...c });
+        else store.db.combos.push(c);
+      }
+      return res;
+    });
   },
-  clearAll() {
-    store.db = createDb();
-    scheduleSave();
-    toast('已清空，现在是空库', 'ok');
-  },
-  retrySave() { return retrySave(); },
-  exportJson() {
-    const blob = JSON.stringify({ exportedAt: new Date().toISOString(), ...toPlain(store.db) }, null, 2);
-    const url = URL.createObjectURL(new Blob([blob], { type: 'application/json' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = '摆摊订单管家-数据-' + ymd(new Date()) + '.json';
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 2000);
-  },
-  exportCsv(kind) {
-    const file = buildCsv(kind, toPlain(store.db));
-    if (!file) { toast('未知的导出类型', 'warn'); return; }
-    const url = URL.createObjectURL(new Blob([file.text], { type: 'text/csv;charset=utf-8' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = file.filename;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 2000);
-    toast(`已导出 ${file.label} CSV，可用 Excel 打开`, 'ok');
-  },
-  importJson(file) {
-    return new Promise(resolve => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        try {
-          const obj = JSON.parse(String(reader.result || ''));
-          if (!obj || !Array.isArray(obj.products) || !Array.isArray(obj.orders)
-              || !Array.isArray(obj.orderItems) || !obj.seq) {
-            throw new Error('不是有效的订单管家备份文件');
-          }
-          delete obj.exportedAt;
-          store.db = migrate(obj);
-          scheduleSave();
-          toast('数据已导入，正在同步到云端', 'ok');
-          resolve({ ok: true });
-        } catch (e) {
-          toast(e.message || '导入失败', 'warn');
-          resolve({ ok: false, error: e });
+  async deleteCombo(id) {
+    if (PREVIEW) return actR(() => deleteCombo(store.db, id));
+    return actR(async () => {
+      const res = await rpc('delete_combo', { p_id: id });
+      if (res.ok && res.data) {
+        if (res.data.deleted) {
+          const i = store.db.combos.findIndex(x => Number(x.id) === Number(id));
+          if (i >= 0) store.db.combos.splice(i, 1);
+        } else {
+          /* 历史订单引用：改为停售 */
+          const c = store.db.combos.find(x => Number(x.id) === Number(id));
+          if (c) c.status = 'off_sale';
+          if (res.data.reason) toast(res.data.reason, 'warn');
         }
-      };
-      reader.onerror = () => { toast('读取文件失败', 'warn'); resolve({ ok: false }); };
-      reader.readAsText(file);
+      }
+      return res;
+    });
+  },
+
+  /* ---------- 预警 ---------- */
+  async resolveAlert(id, note) {
+    if (PREVIEW) return actR(() => resolveAlert(store.db, id, note));
+    return actR(async () => {
+      const res = await rpc('resolve_alert', { p_id: id, p_note: note });
+      if (res.ok && res.data && res.data.alert) {
+        const a = res.data.alert;
+        const i = store.db.alerts.findIndex(x => Number(x.id) === Number(id));
+        if (i >= 0) store.db.alerts.splice(i, 1, { ...store.db.alerts[i], ...a });
+      }
+      return res;
+    });
+  },
+  syncAlerts() { return actR(() => { syncAlerts(store.db); return { ok: true }; }); },
+
+  /* ---------- 导出（云端模式从服务端拉全量） ---------- */
+  async exportDataset() {
+    const res = await rpc('export_dataset');
+    if (!res.ok) { toast(res.error || '读取数据失败', 'warn'); return null; }
+    return res.data;
+  },
+  exportJson() {
+    if (PREVIEW) {
+      const blob = JSON.stringify({ exportedAt: new Date().toISOString(), ...toPlain(store.db) }, null, 2);
+      downloadBlob(blob, 'application/json', '摆摊订单管家-数据-' + ymd(new Date()) + '.json');
+      return;
+    }
+    return actR(async () => {
+      const d = await actions.exportDataset();
+      if (!d) return { ok: false };
+      const blob = JSON.stringify(d, null, 2);
+      downloadBlob(blob, 'application/json', '摆摊订单管家-数据-' + ymd(new Date()) + '.json');
+      return { ok: true };
+    }, '已导出 JSON 备份');
+  },
+  async exportCsv(kind) {
+    if (PREVIEW) {
+      const file = buildCsv(kind, toPlain(store.db));
+      if (!file) { toast('未知的导出类型', 'warn'); return; }
+      downloadBlob(file.text, 'text/csv;charset=utf-8', file.filename);
+      toast(`已导出 ${file.label} CSV，可用 Excel 打开`, 'ok');
+      return;
+    }
+    return actR(async () => {
+      const d = await actions.exportDataset();
+      if (!d) return { ok: false };
+      const file = buildCsv(kind, d);
+      if (!file) { toast('未知的导出类型', 'warn'); return { ok: false }; }
+      downloadBlob(file.text, 'text/csv;charset=utf-8', file.filename);
+      toast(`已导出 ${file.label} CSV，可用 Excel 打开`, 'ok');
+      return { ok: true };
     });
   }
 };
+
+function downloadBlob(content, type, filename) {
+  const url = URL.createObjectURL(new Blob([content], { type }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
 
 /* 便捷读取 */
 export {
