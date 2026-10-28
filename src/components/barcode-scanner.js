@@ -18,7 +18,7 @@ function loadDecoder() {
 export const UiBarcodeScanner = {
   name: 'UiBarcodeScanner',
   props: { feedback: { type: String, default: '' }, tone: { type: String, default: 'info' }, successKey: { type: Number, default: 0 }, active: { type: Boolean, default: true }, items: { type: Array, default: null } },
-  emits: ['scan'],
+  emits: ['scan', 'change-quantity'],
   data() { return { manual: '', starting: false, running: false, confirming: false, error: '', cameras: [], deviceId: '' }; },
   watch: { successKey() { this.showSuccess(); }, active(value) { if (value) this.start(); else this.stop(); } },
   mounted() {
@@ -148,7 +148,14 @@ export const UiBarcodeScanner = {
         <table>
           <thead><tr><th scope="col">商品</th><th scope="col">数量</th></tr></thead>
           <tbody><tr v-for="item in items" :key="item.id">
-            <td>{{ item.name }}</td><td><b class="mono">{{ item.qty }}</b><span>{{ item.unit }}</span></td>
+            <td>{{ item.name }}</td><td>
+              <div class="barcode-quantity">
+                <button type="button" :disabled="!active || !item.canDecrease" :aria-label="'减少 ' + item.name" :title="item.canDecrease ? '减少一件' : '套餐内数量请在本单中调整套餐'" @click="$emit('change-quantity', { id: item.id, delta: -1 })">−</button>
+                <b class="mono" :aria-label="item.name + ' 当前数量 ' + item.qty">{{ item.qty }}</b>
+                <button type="button" :disabled="!active || !item.canIncrease" :aria-label="'增加 ' + item.name" @click="$emit('change-quantity', { id: item.id, delta: 1 })">＋</button>
+              </div>
+              <span>{{ item.unit }}</span>
+            </td>
           </tr></tbody>
         </table>
       </div>

@@ -1628,7 +1628,11 @@
 .barcode-summary table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: var(--fs-sm); }
 .barcode-summary th, .barcode-summary td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--stroke); overflow-wrap: anywhere; }
 .barcode-summary th { position: sticky; top: 0; z-index: 1; background: var(--bg); color: var(--label-2); font-size: var(--fs-xs); font-weight: 500; }
-.barcode-summary th:last-child, .barcode-summary td:last-child { width: 86px; text-align: right; white-space: nowrap; }
+.barcode-summary th:last-child, .barcode-summary td:last-child { width: 142px; text-align: right; white-space: nowrap; }
+.barcode-quantity { display: inline-flex; align-items: center; justify-content: space-between; gap: 4px; vertical-align: middle; }
+.barcode-quantity button { display: inline-grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--stroke); border-radius: var(--r-pill); background: var(--fill); color: var(--blue); font-size: var(--fs-lg); touch-action: manipulation; }
+.barcode-quantity button:disabled { opacity: .35; cursor: default; }
+.barcode-quantity b { min-width: 25px; text-align: center; }
 .barcode-summary td b { font-size: var(--fs-lg); }
 .barcode-summary td span { margin-left: 5px; color: var(--label-2); font-size: var(--fs-xs); }
 .barcode-summary tbody tr:last-child td { border-bottom: 0; }
