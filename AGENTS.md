@@ -47,7 +47,9 @@
 ## 本地预览（Mac 上）
 
 ```bash
-cd ~/WorkBuddy/集市收银台 && ./dev.sh 8080
+cd ~/WorkBuddy/集市收银台 && ./dev.sh
 # 绑定 0.0.0.0，Cache-Control: no-store，启动时打印局域网地址
+# 默认 8080；若被 ./testenv.sh 的 Docker 测试环境占用，会自动顺延到 8081、8082… 并提示实际端口
 ```
 手机与 Mac 同一 Wi-Fi 时，用打印出来的局域网地址 + `?preview=1` 访问，改完刷新即生效（无需清缓存）。
+注意 8080 若在跑 `./testenv.sh`，它服务的是 `dist` 打包快照，**不会随改代码更新**，预览要以 dev.sh 打印的端口为准。

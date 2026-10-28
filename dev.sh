@@ -2,7 +2,7 @@
 # 集市收银台 · 本地调试服务
 #   - 绑定 0.0.0.0：同一 Wi-Fi / 热点下的 iPad、手机可直接打开
 #   - 禁用所有缓存：改完文件刷新就生效，不用清缓存
-# 用法：./dev.sh [端口]     默认 8080
+# 用法：./dev.sh [端口]     默认 8080，被占用时自动顺延到下一个空闲端口
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -14,6 +14,25 @@ exec "$PY" - "$PORT" <<'PYCODE'
 import http.server, socket, socketserver, sys
 
 port = int(sys.argv[1])
+requested = port
+
+
+def port_free(p):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            probe.bind(("0.0.0.0", p))
+            return True
+        except OSError:
+            return False
+
+
+for candidate in range(requested, requested + 20):
+    if port_free(candidate):
+        port = candidate
+        break
+else:
+    raise SystemExit(f"端口 {requested} 起的 20 个端口都被占用，请手动指定：./dev.sh 9000")
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -43,6 +62,9 @@ def lan_ips():
 
 
 print("集市收银台 · 本地调试服务")
+if port != requested:
+    print(f"  注意：端口 {requested} 已被占用（多半是 ./testenv.sh 起的 Docker 测试快照，不随改代码变化），")
+    print(f"        已自动改用 {port}，以本页地址为准。")
 print(f"  端口 {port}，缓存已关闭（改完刷新即生效）")
 print(f"  本机    http://127.0.0.1:{port}")
 for ip in lan_ips():
