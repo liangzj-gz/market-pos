@@ -674,8 +674,8 @@ export const RegisterView = {
       <span class="cart-bar-text"><b class="mono">{{ money(total) }}</b><em>{{ hasItems ? '查看本单 · ' + lines + ' 行商品' : '点商品开始选购' }}</em></span>
       <ui-icon name="chevronUp" :size="15" v-if="hasItems" />
     </button>
-    <button class="btn cart-direct-scan" @click="openScanner" aria-label="扫码录入商品">扫码</button>
     <button class="btn btn-primary cart-direct-pay" :disabled="!hasItems" @click="openPay">收款</button>
+    <button class="btn cart-direct-scan" @click="openScanner" aria-label="扫码录入商品">扫码</button>
   </div>
 
   <!-- 自选套餐：按子套餐中类现场选品 -->
