@@ -5,3 +5,6 @@
 .DS_Store
 *.log
 dist/
+
+# 测试环境本地证书（mkcert）
+.testenv-certs/
