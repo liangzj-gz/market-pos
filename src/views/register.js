@@ -374,9 +374,11 @@ export const RegisterView = {
     },
     clearSearch() { this.reg.search = ''; },
     doClear() { clearCart(); this.cartOpen = false; this.confirmClear = false; },
-    openPay() {
+    async openPay() {
       if (!this.hasItems) return;
+      this.scanning = false;
       this.cartOpen = false;
+      await this.$nextTick();
       this.paying = true;
     },
     async onPaySubmit(payload) {
@@ -418,7 +420,7 @@ export const RegisterView = {
 <div class="v-register">
   <ui-sheet v-if="scanning" title="扫码录入商品" @close="scanning = false">
     <ui-barcode-scanner :feedback="scanFeedback" :tone="scanTone" :success-key="scanSuccess" :items="scanItems" @scan="scanProduct" @change-quantity="changeScanQuantity" />
-    <template #foot><button class="btn btn-primary grow" @click="scanning = false">完成选品 · 本单 {{ pieces }} 件</button></template>
+    <template #foot><button class="btn btn-primary grow" :disabled="!hasItems" @click="openPay">收款 {{ money(total) }} · {{ pieces }} 件</button></template>
   </ui-sheet>
   <div class="reg-layout">
     <!-- 选货 -->
