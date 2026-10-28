@@ -1485,7 +1485,7 @@
 .v-register .gift-check .switch-track { width: 28px; height: 16px; }
 .v-register .gift-check .switch-track::after { width: 12px; height: 12px; top: 2px; left: 2px; }
 .v-register .gift-check input:checked + .switch-track::after { transform: translateX(12px); }
-.v-register .cl-price-input { width: 54px; min-height: 30px; padding: 3px 6px; font-size: var(--fs-sm); }
+.v-register .cl-price-input { width: 54px; min-height: 30px; padding: 3px 6px; font-size: var(--fs-sm); text-align: center; }
 .v-register .stepper { padding: 2px; }
 .v-register .stepper button { width: 28px; height: 28px; }
 .v-register .stepper-input { width: 28px; min-width: 28px; min-height: 28px; font-size: var(--fs-sm); }

@@ -308,7 +308,18 @@ export const RegisterView = {
     },
     incLine, decLine, removeLine, toggleGift,
     onQty(l, e) { setLineQty(l, e.target.value); },
-    onPrice(l, e) { setLinePrice(l, e.target.value); },
+    selectLinePrice(e) {
+      const input = e.target;
+      input.select();
+      // 等点击默认的光标定位结束后，再保持全选，方便手机直接输入替换。
+      requestAnimationFrame(() => { if (document.activeElement === input) input.select(); });
+    },
+    onPrice(l, e) {
+      const value = e.target.value.trim();
+      if (/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(value) && Number.isFinite(Number(value))) setLinePrice(l, value);
+      else if (value) toast('请输入有效的非负价格');
+      e.target.value = l.price;
+    },
     /* 商品格上显示「扣掉这单还剩几件」 */
     stockLeft(p) {
       const b = balanceOf(store.db, p.id);
@@ -580,8 +591,8 @@ export const RegisterView = {
               <span v-else class="xs muted">共 {{ comboSelectionPieces(l) }} 件</span>
               <div class="cl-right">
                 <span class="cl-price">
-                  <i>¥</i><input class="input input-mono cl-price-input" type="number" inputmode="decimal" step="0.01" min="0"
-                                 :value="l.price" :disabled="l.gift" @change="onPrice(l, $event)" :aria-label="l.name + ' 单价'">
+                  <i>¥</i><input class="input input-mono cl-price-input" type="text" inputmode="decimal" enterkeyhint="done" autocomplete="off" spellcheck="false"
+                                 :value="l.price" :disabled="l.gift" @focus="selectLinePrice" @click="selectLinePrice" @keydown.enter="$event.target.blur()" @change="onPrice(l, $event)" :aria-label="l.name + ' 单价'">
                 </span>
                 <span class="stepper">
                   <button @click="decLine(l)" aria-label="减少"><ui-icon name="minus" :size="15" /></button>
