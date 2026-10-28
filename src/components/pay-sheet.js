@@ -4,6 +4,7 @@ import { UiPaymentCode } from './payment-code.js';
 import { store } from '../data/store.js';
 import { num, r2, money, moneyNum, ADJUST_TYPES, ADJUST_HINT, CHANNEL_TXT } from '../util/format.js';
 import { roundingSuggestions } from '../domain/cart.js';
+import { UiTimeWheel } from './time-wheel.js';
 
 function localDateTime() {
   const d = new Date();
@@ -13,7 +14,7 @@ function localDateTime() {
 
 export const UiPaySheet = {
   name: 'UiPaySheet',
-  components: { UiSheet, UiPaymentCode },
+  components: { UiSheet, UiPaymentCode, UiTimeWheel },
   props: {
     total: { type: Number, required: true },
     pieces: { type: Number, default: 0 },
@@ -64,6 +65,7 @@ export const UiPaySheet = {
     exact() { this.setPaid(moneyNum(this.totalNum)); },
     pickType(t) { this.adjustType = this.adjustType === t ? '' : t; this.err = ''; },
     submit() {
+      this.$refs.timeWheel?.commit();
       if (this.paid === '' || isNaN(this.paidNum) || this.paidNum < 0) {
         this.err = '请填写实收金额'; return;
       }
@@ -153,9 +155,10 @@ export const UiPaySheet = {
         <span class="field-label">收款时间</span>
         <div class="pay-datetime">
           <input class="input input-mono" type="date" v-model="paidDate" :max="maxPaidAt.slice(0, 10)" @focus="maxPaidAt = localDateTime()" aria-label="收款日期">
-          <input class="input input-mono" type="time" v-model="paidTime" step="60" :max="paidDate === maxPaidAt.slice(0, 10) ? maxPaidAt.slice(11) : undefined" @focus="maxPaidAt = localDateTime()" aria-label="收款时分">
+          <span class="pay-time-value mono" aria-live="polite">{{ paidTime }}</span>
         </div>
-        <p class="field-hint">默认当前日期时间；点击日期选日历，点击时间调整时分。</p>
+        <ui-time-wheel ref="timeWheel" v-model="paidTime" :disabled="submitting" />
+        <p class="field-hint">日期点击日历选择，小时和分钟可直接上下滑动。</p>
       </div>
 
       <div class="field-err" v-if="err">{{ err }}</div>
