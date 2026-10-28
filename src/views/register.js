@@ -125,6 +125,18 @@ export const RegisterView = {
     this._scannerMedia = window.matchMedia('(min-width: 900px)');
     this._scannerLayout = event => { this.scanning = false; this.dockScanner = event.matches; };
     this._scannerMedia.addEventListener('change', this._scannerLayout);
+    this._keyboardViewport = window.visualViewport;
+    this._keyboardLayout = () => {
+      if (this._keyboardRaf) return;
+      this._keyboardRaf = requestAnimationFrame(() => {
+        this._keyboardRaf = null;
+        this.fitCartToKeyboard();
+      });
+    };
+    this._keyboardViewport?.addEventListener('resize', this._keyboardLayout);
+    this._keyboardViewport?.addEventListener('scroll', this._keyboardLayout);
+    document.addEventListener('focusin', this._keyboardLayout);
+    document.addEventListener('focusout', this._keyboardLayout);
     this._categoryScroll = () => {
       if (this._categoryRaf) return;
       this._categoryRaf = requestAnimationFrame(() => {
@@ -144,6 +156,11 @@ export const RegisterView = {
     this.$nextTick(this.refreshCategories);
   },
   beforeUnmount() {
+    this._keyboardViewport?.removeEventListener('resize', this._keyboardLayout);
+    this._keyboardViewport?.removeEventListener('scroll', this._keyboardLayout);
+    document.removeEventListener('focusin', this._keyboardLayout);
+    document.removeEventListener('focusout', this._keyboardLayout);
+    if (this._keyboardRaf) cancelAnimationFrame(this._keyboardRaf);
     this._scannerMedia.removeEventListener('change', this._scannerLayout);
     window.removeEventListener('scroll', this._categoryScroll);
     this.$refs.pickPane.removeEventListener('scroll', this._categoryScroll);
@@ -155,6 +172,25 @@ export const RegisterView = {
     if (this._categoryRaf) cancelAnimationFrame(this._categoryRaf);
   },
   methods: {
+    fitCartToKeyboard() {
+      const cart = this.$el.querySelector('.reg-cart');
+      const viewport = this._keyboardViewport;
+      const input = document.activeElement;
+      const editing = input?.matches('input, textarea') && cart?.contains(input);
+      const keyboardOpen = !!(viewport && this.cartOpen && !this.dockScanner && editing
+        && window.innerHeight - viewport.height > 100);
+      cart?.classList.toggle('is-keyboard-open', keyboardOpen);
+      if (!keyboardOpen) return;
+      cart.style.setProperty('--cart-visible-height', viewport.height + 'px');
+      cart.style.setProperty('--cart-keyboard-bottom', Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop) + 'px');
+      // 仅滚动本单明细，避免 Safari 把整个页面拖到输入框所在的位置。
+      const body = cart.querySelector('.cart-body');
+      if (!body?.contains(input)) return;
+      const bounds = body.getBoundingClientRect();
+      const field = input.getBoundingClientRect();
+      if (field.bottom > bounds.bottom - 12) body.scrollTop += field.bottom - bounds.bottom + 12;
+      else if (field.top < bounds.top + 12) body.scrollTop -= bounds.top + 12 - field.top;
+    },
     async openScanCart() {
       this.scanning = false;
       await this.$nextTick();

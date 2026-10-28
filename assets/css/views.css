@@ -1532,6 +1532,10 @@
 @media (max-width: 899px) {
   .reg-cart-close { display: inline-flex; }
   .reg-cart-backdrop { display: block; position: fixed; inset: 0; z-index: 44; background: var(--fill-2); }
+  .v-register .reg-cart.is-keyboard-open { bottom: calc(var(--cart-keyboard-bottom) + 8px); }
+  .v-register .reg-cart.is-keyboard-open .cart-panel { max-height: calc(var(--cart-visible-height) - 24px); }
+  .v-register .reg-cart.is-keyboard-open .cart-body { flex: 1; min-height: 0; max-height: none; }
+  .v-register .reg-cart.is-keyboard-open .cart-foot { padding-bottom: 8px; }
 }
 
 @media (min-width: 521px) and (max-width: 899px) { .reg-browse { grid-template-columns: 120px minmax(0, 1fr); gap: 14px; } }
