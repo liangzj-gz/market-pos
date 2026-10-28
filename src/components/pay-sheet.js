@@ -24,17 +24,20 @@ export const UiPaySheet = {
   },
   emits: ['close', 'submit'],
   data() {
+    const now = localDateTime();
     return {
       channel: this.defaultChannel || 'wechat',
       paid: moneyNum(this.total),
       adjustType: '',
       adjustReason: '',
-      paidAt: localDateTime(),
-      maxPaidAt: localDateTime(),
+      paidDate: now.slice(0, 10),
+      paidTime: now.slice(11),
+      maxPaidAt: now,
       err: ''
     };
   },
   computed: {
+    paidAt() { return this.paidDate && this.paidTime ? this.paidDate + 'T' + this.paidTime : ''; },
     paymentCode() { return store.db.paymentCodes?.[this.channel] || ''; },
     totalNum() { return num(this.total); },
     paidNum() { return num(this.paid); },
@@ -68,6 +71,7 @@ export const UiPaySheet = {
         this.err = '实收与应收差 ' + (this.diff > 0 ? '+' : '') + this.diff + ' 元，请先选择差额原因';
         return;
       }
+      if (!this.paidAt) { this.err = '请选择完整的收款日期和时间'; return; }
       let paidAt = null;
       if (this.paidAt) {
         const t = new Date(this.paidAt);
@@ -147,8 +151,11 @@ export const UiPaySheet = {
 
       <div class="field">
         <span class="field-label">收款时间</span>
-        <input class="input input-mono" type="datetime-local" v-model="paidAt" :max="maxPaidAt" @focus="maxPaidAt = localDateTime()" aria-label="收款时间">
-        <p class="field-hint">默认填入当前日期时间，点击可修改为实际收款时间。</p>
+        <div class="pay-datetime">
+          <input class="input input-mono" type="date" v-model="paidDate" :max="maxPaidAt.slice(0, 10)" @focus="maxPaidAt = localDateTime()" aria-label="收款日期">
+          <input class="input input-mono" type="time" v-model="paidTime" step="60" :max="paidDate === maxPaidAt.slice(0, 10) ? maxPaidAt.slice(11) : undefined" @focus="maxPaidAt = localDateTime()" aria-label="收款时分">
+        </div>
+        <p class="field-hint">默认当前日期时间；点击日期选日历，点击时间调整时分。</p>
       </div>
 
       <div class="field-err" v-if="err">{{ err }}</div>
