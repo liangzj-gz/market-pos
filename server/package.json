@@ -1,0 +1,17 @@
+{
+  "name": "market-pos-server",
+  "version": "1.0.0",
+  "description": "集市收银台自托管后端（Oracle Cloud / 任意 Docker 主机）",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "pg": "^8.13.1"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

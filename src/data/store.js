@@ -44,8 +44,12 @@ import {
   changePassword as changePasswordRemote
 } from './cloud.js';
 import {
-  rpc, newRequestId, uploadPaymentCodeImage, signPaymentCodePath, removeStorageObject
+  rpc, newRequestId, uploadPaymentCodeImage, signPaymentCodePath, removeStorageObject,
+  SELF_HOSTED, selfHostLogin, selfHostSetup, setSelfHostToken, selfHostToken
 } from './api.js';
+
+/* 登录页据此切换形态：自托管 = 密码登录 + 首次建号（无短信） */
+export const SELF_HOST_LOGIN = SELF_HOSTED;
 
 const { reactive, computed } = window.Vue;
 
@@ -519,6 +523,19 @@ export async function bootstrap() {
     return;
   }
   store.auth.status = 'loading';
+  if (SELF_HOSTED) {
+    /* 自托管：有 token 直接进，没有则到登录页 */
+    if (selfHostToken()) {
+      const res = await rpc('load_snapshot');
+      if (res.ok) {
+        await enterApp({ user: { id: res.data && res.data.uid } });
+        return;
+      }
+      if (res.status === 401) setSelfHostToken('');
+    }
+    store.auth.status = 'anon';
+    return;
+  }
   if (!cloudAvailable()) {
     store.auth.status = 'anon';
     store.auth.error = '云端 SDK 没有加载成功，请刷新页面重试';
@@ -535,6 +552,17 @@ export async function bootstrap() {
 
 export async function signIn(phone, password) {
   store.auth.error = '';
+  if (SELF_HOSTED) {
+    const r = await selfHostLogin(phone, password);
+    if (!r.ok) {
+      store.auth.error = r.error || '登录失败';
+      return r;
+    }
+    setSelfHostToken(r.data.token);
+    store.uid = r.data.user.uid;
+    await enterApp({ user: { id: r.data.user.uid, name: r.data.user.name } });
+    return { ok: true };
+  }
   const res = await signInWithPassword(phone, password);
   if (!res.ok) {
     store.auth.error = res.error;
@@ -546,6 +574,7 @@ export async function signIn(phone, password) {
 
 /* 首次激活：发一次短信验证码，验完就用初始密码建账号 */
 export async function requestCode(phone) {
+  if (SELF_HOSTED) return { ok: false, error: '' };
   const res = await sendOtp(phone);
   if (res.ok) {
     store.auth.error = '';
@@ -556,6 +585,19 @@ export async function requestCode(phone) {
 }
 
 export async function activate({ phone, verificationId, token, isExistingUser, password }) {
+  if (SELF_HOSTED) {
+    /* 自托管「首次使用」：直接建号（仅当库为空时服务端允许） */
+    store.auth.error = '';
+    const r = await selfHostSetup(phone, password || '123456', phone);
+    if (!r.ok) {
+      store.auth.error = r.error || '创建账号失败';
+      return r;
+    }
+    setSelfHostToken(r.data.token);
+    store.uid = r.data.user.uid;
+    await enterApp({ user: { id: r.data.user.uid, name: r.data.user.name } });
+    return { ok: true };
+  }
   store.auth.error = '';
   const res = await verifyOtp({ phone, verificationId, token, isExistingUser, password });
   if (!res.ok) {
@@ -567,6 +609,10 @@ export async function activate({ phone, verificationId, token, isExistingUser, p
 }
 
 export async function changePassword(oldPassword, newPassword) {
+  if (SELF_HOSTED) {
+    toast('自托管版请在服务器上改密码（详见部署文档）', 'info');
+    return { ok: false, error: 'not supported' };
+  }
   const res = await changePasswordRemote(oldPassword, newPassword);
   if (res.ok) toast('密码已更新，下次用新密码登录', 'ok');
   else toast(res.error || '修改密码失败', 'warn');
@@ -575,7 +621,11 @@ export async function changePassword(oldPassword, newPassword) {
 
 export async function logout() {
   if (PREVIEW) { toast('预览模式无需退出', 'info'); return; }
-  await cloudSignOut();
+  if (SELF_HOSTED) {
+    setSelfHostToken('');
+  } else {
+    await cloudSignOut();
+  }
   store.db = createDb();
   store.counts = null;
   store.dash = null;

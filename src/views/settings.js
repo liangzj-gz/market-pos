@@ -1,5 +1,5 @@
 /* 设置：云端账号、收款码、数据导出、业务规则对照 */
-import { store, actions, demoInfo, changePassword, logout, toast, PREVIEW } from '../data/store.js';
+import { store, actions, demoInfo, changePassword, logout, toast, PREVIEW, SELF_HOST_LOGIN } from '../data/store.js';
 import { UiPaymentCode } from '../components/payment-code.js';
 import { fmtDT } from '../util/format.js';
 
@@ -33,6 +33,7 @@ export const SettingsView = {
   },
   computed: {
     preview() { return PREVIEW; },
+    selfHost() { return SELF_HOST_LOGIN; },
     store() { return store; },
     info() { return demoInfo.value; },
     syncText() { return SYNC_TXT[store.sync.state] || '已连接'; },
@@ -146,13 +147,14 @@ export const SettingsView = {
   <div class="card">
     <div class="card-head"><h3><ui-icon name="lock" :size="16" /> 账号</h3></div>
     <div class="card-body stack-sm">
-      <button class="btn btn-block" @click="openPwd">
+      <button v-if="!selfHost" class="btn btn-block" @click="openPwd">
         <ui-icon name="lock" :size="16" /> 修改密码
       </button>
+      <p v-else class="xs muted">自托管版暂不支持在页面上改密码；需要改密时在服务器上按部署文档操作。</p>
       <button class="btn btn-block btn-danger" @click="confirmLogout = true">
         <ui-icon name="logout" :size="16" /> 退出登录
       </button>
-      <p class="xs muted">初始密码是 123456，建议现在就换掉。退出登录会清空本页内存里的数据，重新登录再从云端拉。</p>
+      <p class="xs muted">{{ selfHost ? '数据存放在你自己的服务器（Oracle Cloud）上，退出后重新登录即可。' : '初始密码是 123456，建议现在就换掉。退出登录会清空本页内存里的数据，重新登录再从云端拉。' }}</p>
     </div>
   </div>
 
