@@ -52,7 +52,7 @@ cp deploy/caddy/Caddyfile "$PKG/deploy/caddy/"
 chmod +x "$PKG/deploy/"*.sh
 
 # ---------- 编排与文档 ----------
-cp docker-compose.yml "$PKG/"
+cp deploy/docker-compose.yml "$PKG/"
 cp web/Dockerfile "$PKG/web/Dockerfile"
 cp deploy/.env.example "$PKG/"
 cp deploy/DEPLOY.md "$PKG/"
