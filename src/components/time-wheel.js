@@ -133,7 +133,6 @@ export const UiTimeWheel = {
       <div class="time-wheel-band" aria-hidden="true"></div>
       <div class="time-wheel-columns">
         <div class="time-wheel-column" v-for="column in columns" :key="column.key">
-          <span class="time-wheel-label">{{ column.label }}</span>
           <div class="time-wheel-track" :data-time-wheel="column.key" role="spinbutton" tabindex="0"
                :aria-label="column.label" :aria-valuenow="picked[column.key]" :aria-valuemin="column.min" :aria-valuemax="column.max" :aria-disabled="disabled"
                @scroll.passive="onScroll(column, $event)" @keydown="onKey(column, $event)"
@@ -142,6 +141,7 @@ export const UiTimeWheel = {
             <div class="time-wheel-option" v-for="(value, index) in column.values" :key="index"
                  :class="{ 'is-selected': index === positions[column.key] }" :style="optionStyle(column, index)" @click="onOptionClick(column, index)">{{ column.key === 'year' ? value : pad(value) }}</div>
           </div>
+          <span v-if="column.key !== 'minute'" class="time-wheel-unit" aria-hidden="true">{{ column.key === 'hour' ? '：' : column.label }}</span>
         </div>
       </div>
     </div>`
