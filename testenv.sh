@@ -47,6 +47,16 @@ echo "==> [1/4] 打包当前代码…"
 mkdir -p dist && rm -rf "$DIR" && mkdir "$DIR" \
   && tar xzf dist/market-pos-oracle.tar.gz -C "$DIR" --strip-components=1
 
+# 本地测试每次使用最新脚本和样式，不沿用部署包的长期缓存。
+TESTENV_NGINX="$DIR/web/nginx.conf" python3 - <<'PY'
+import os
+from pathlib import Path
+config = Path(os.environ['TESTENV_NGINX'])
+config.write_text(config.read_text().replace('expires 30d;', 'expires off;')
+                  .replace('add_header Cache-Control "public, immutable";',
+                           'add_header Cache-Control "no-store" always;'))
+PY
+
 # 测试环境固定配置（端口可覆盖；每次重灌演示数据）
 cat > "$DIR/.env" << ENV
 WEB_PORT=$PORT
