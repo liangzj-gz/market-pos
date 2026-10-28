@@ -154,11 +154,11 @@ async function main() {
     );
   }
 
-  /* 8) 库存流水（导出的 ref_id 即 order_id） */
+  /* 8) 库存流水（导出 JSON 里的 ref_id = 表里的 order_id） */
   for (const m of raw.movements || []) {
     await q(
       `INSERT INTO movements (owner_id, id, product_id, movement_type, quantity, balance_after,
-                              ref_type, ref_id, ref_no, note, created_at)
+                              ref_type, order_id, ref_no, note, created_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, COALESCE($11::timestamptz, now()))
        ON CONFLICT DO NOTHING`,
       [uid, m.id, m.product_id, m.movement_type, m.quantity, m.balance_after,
