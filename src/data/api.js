@@ -55,8 +55,8 @@ export async function selfHostLogin(phone, password) {
   return selfHostFetch('/api/login', { phone, password });
 }
 
-export async function selfHostSetup(phone, password, name) {
-  return selfHostFetch('/api/setup', { phone, password, name });
+export async function selfHostSetup(phone, password, name, setupKey) {
+  return selfHostFetch('/api/setup', { phone, password, name, setupKey });
 }
 
 /* ---------- RPC ---------- */

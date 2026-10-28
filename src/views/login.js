@@ -17,6 +17,7 @@ export const LoginView = {
       password: '',
       code: '',
       initPassword: '123456',
+      setupKey: '',
       verificationId: '',
       isExistingUser: false,
       sending: false,
@@ -98,10 +99,11 @@ export const LoginView = {
         return;
       }
       if (this.selfHost) {
-        /* 自托管：直接建号 */
+        /* 自托管：直接建号（需要服务器 .env 里的 SETUP_KEY） */
         if ((this.initPassword || '').length < 6) { this.error = '密码至少 6 位'; return; }
+        if (!this.setupKey.trim()) { this.error = '请输入建号密钥（见服务器 .env 的 SETUP_KEY）'; return; }
         this.busy = true;
-        const res = await activate({ phone: this.phone, password: this.initPassword });
+        const res = await activate({ phone: this.phone, password: this.initPassword, setupKey: this.setupKey.trim() });
         this.busy = false;
         if (!res.ok) this.error = res.error || '创建账号失败，请重试';
         return;
@@ -163,9 +165,14 @@ export const LoginView = {
             <input class="input" type="password" autocomplete="new-password"
                    placeholder="至少 6 位" v-model="initPassword">
           </label>
+          <label class="field">
+            <span class="field-label">建号密钥</span>
+            <input class="input" type="password" autocomplete="off"
+                   placeholder="服务器 .env 里的 SETUP_KEY" v-model="setupKey">
+          </label>
           <div class="pill-note" style="margin-bottom:14px">
             <ui-icon name="info" :size="16" />
-            <div>只在服务器还没有账号时可用；建好第一个账号后请回到「密码登录」。</div>
+            <div>密钥在服务器 ~/market-pos/.env 的 SETUP_KEY 一行；建好第一个账号后此入口自动失效。</div>
           </div>
         </template>
 

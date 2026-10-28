@@ -1,18 +1,35 @@
 import express from 'express';
 import { pool, q, q1, qAs, q1As } from './db.js';
 import { signToken, verifyToken, hashPassword, checkPassword } from './auth-util.js';
+import { runMigrations } from './migrate.js';
 
 const app = express();
 app.use(express.json({ limit: '12mb' }));
 
+/* 启动即执行迁移（失败则退出容器，compose 重启重试） */
+let migrated = false;
+runMigrations()
+  .then(() => { migrated = true; })
+  .catch(e => { console.error('[migrate] 启动失败：', e.message); process.exit(1); });
+
 /* ============ 登录 / 会话 ============ */
 
+/* 首次建号密钥：必须配置（.env 的 SETUP_KEY）。没有它，公网扫描器可抢注第一个账号 */
+const SETUP_KEY = process.env.SETUP_KEY || '';
+
 const BOOTSTRAP_HINT =
-  '库还没有账号。先创建第一个账号：POST /api/setup { phone, password, name }（仅当 users 表为空时可用）';
+  '库还没有账号。先创建第一个账号：POST /api/setup { phone, password, setupKey }（setupKey 见服务器 .env）';
 
 app.post('/api/setup', async (req, res) => {
   try {
-    const { phone, password, name } = req.body || {};
+    const { phone, password, name, setupKey } = req.body || {};
+    if (!SETUP_KEY) {
+      console.error('[setup] 服务器未配置 SETUP_KEY，拒绝建号。请在 .env 设置后 docker compose up -d');
+      return res.status(503).json({ error: '服务器未配置建号密钥（SETUP_KEY），请联系管理员' });
+    }
+    if (setupKey !== SETUP_KEY) {
+      return res.status(403).json({ error: '建号密钥不正确（见服务器 .env 的 SETUP_KEY）' });
+    }
     if (!phone || !password) return res.status(400).json({ error: '需要 phone 和 password' });
     const cnt = await q1(`SELECT count(*)::int AS n FROM local_users`);
     if (cnt.n > 0) return res.status(403).json({ error: '已初始化过，请直接登录' });
@@ -217,7 +234,9 @@ app.delete('/api/files/*', (req, res) => {
 app.get('/api/health', async (_req, res) => {
   try {
     await q1('SELECT 1 AS ok');
-    res.json({ ok: true, db: 'up', ts: new Date().toISOString() });
+    if (!migrated) return res.status(503).json({ ok: false, db: 'up', migrate: 'running' });
+    const mig = await q1(`SELECT count(*)::int AS n FROM schema_migrations`);
+    res.json({ ok: true, db: 'up', migrations: mig.n, ts: new Date().toISOString() });
   } catch (e) {
     res.status(503).json({ ok: false, db: 'down', error: e.message });
   }

@@ -33,9 +33,11 @@ services:
       PGPASSWORD: ${PGPASSWORD:-marketpos}
       AUTH_SECRET: ${AUTH_SECRET:-}
       AUTH_TTL_DAYS: "30"
+      SETUP_KEY: ${SETUP_KEY:-}
       FILES_DIR: /data/files
     volumes:
       - appfiles:/data/files
+      - ./sql/migrations:/app/sql/migrations:ro
     networks: [backend]
 
   web:
@@ -46,9 +48,29 @@ services:
       - "${WEB_PORT:-80}:80"
     networks: [backend]
 
+  # HTTPS（可选）：有域名时启用 —— .env 设 DOMAIN 后 docker compose --profile https up -d
+  # 启用后 Caddy 自动签发/续期证书；此时 .env 的 WEB_PORT 应设为 8080（把 80 让给 Caddy）
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["https"]
+    restart: unless-stopped
+    depends_on: [web]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:-}
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [backend]
+
 volumes:
   pgdata:
   appfiles:
+  caddy_data:
+  caddy_config:
 
 networks:
   backend:

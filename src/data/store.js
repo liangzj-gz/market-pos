@@ -584,11 +584,11 @@ export async function requestCode(phone) {
   return res;
 }
 
-export async function activate({ phone, verificationId, token, isExistingUser, password }) {
+export async function activate({ phone, verificationId, token, isExistingUser, password, setupKey }) {
   if (SELF_HOSTED) {
-    /* 自托管「首次使用」：直接建号（仅当库为空时服务端允许） */
+    /* 自托管「首次使用」：直接建号（需服务器 .env 的 SETUP_KEY；仅当库为空时可用） */
     store.auth.error = '';
-    const r = await selfHostSetup(phone, password || '123456', phone);
+    const r = await selfHostSetup(phone, password || '123456', phone, setupKey);
     if (!r.ok) {
       store.auth.error = r.error || '创建账号失败';
       return r;

@@ -40,9 +40,16 @@ cp web/nginx.conf "$PKG/web/nginx.conf"
 cp server/package.json server/Dockerfile "$PKG/server/"
 cp server/src/*.js server/src/*.mjs "$PKG/server/src/"
 
-# ---------- SQL（只带自托管需要的 4 个） ----------
-mkdir -p "$PKG/sql"
+# ---------- SQL（首次建库 4 个 + 升级迁移目录） ----------
+mkdir -p "$PKG/sql/migrations"
 cp sql/0000_self_host.sql sql/0001_schema.sql sql/0002_indexes.sql sql/0003_functions.sql "$PKG/sql/"
+cp sql/migrations/*.sql "$PKG/sql/migrations/"
+
+# ---------- 运维脚本与 Caddy 配置 ----------
+mkdir -p "$PKG/deploy/caddy"
+cp deploy/deploy.sh deploy/update.sh deploy/backup.sh deploy/restore.sh "$PKG/deploy/"
+cp deploy/caddy/Caddyfile "$PKG/deploy/caddy/"
+chmod +x "$PKG/deploy/"*.sh
 
 # ---------- 编排与文档 ----------
 cp docker-compose.yml "$PKG/"
