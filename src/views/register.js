@@ -155,6 +155,11 @@ export const RegisterView = {
     if (this._categoryRaf) cancelAnimationFrame(this._categoryRaf);
   },
   methods: {
+    async openScanCart() {
+      this.scanning = false;
+      await this.$nextTick();
+      this.cartOpen = true;
+    },
     changeScanQuantity({ id, delta }) {
       const product = productById(store.db, Number(id));
       const line = this.cart.find(item => item.type === 'product' && String(item.id) === String(id));
@@ -422,6 +427,7 @@ export const RegisterView = {
     <ui-barcode-scanner :feedback="scanFeedback" :tone="scanTone" :success-key="scanSuccess" :items="scanItems" @scan="scanProduct" @change-quantity="changeScanQuantity" />
     <template #foot>
       <button class="btn" @click="scanning = false" aria-label="返回列表继续添加商品">返回列表</button>
+      <button class="btn" :disabled="!hasItems" @click="openScanCart">修改价格</button>
       <button class="btn btn-primary grow" :disabled="!hasItems" @click="openPay">收款 {{ money(total) }}</button>
     </template>
   </ui-sheet>
