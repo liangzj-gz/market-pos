@@ -1,0 +1,55 @@
+{
+  "exportedAt": "2026-10-28T12:00:00",
+  "categories": [
+    { "id": 1, "parent_id": null, "name": "饮品", "sort": 0, "created_at": "2026-10-27T09:00:00+08:00" },
+    { "id": 2, "parent_id": null, "name": "小食", "sort": 1, "created_at": "2026-10-27T09:00:00+08:00" }
+  ],
+  "products": [
+    { "id": 1, "category_id": 2, "sku_code": "DEMO-01", "barcode": null, "name": "苹果（测试）", "series": "小食", "unit": "斤", "list_price": 6, "cost_price": 3, "safety_stock": 2, "status": "on_sale", "created_at": "2026-10-27T09:05:00+08:00", "category": "小食", "tags": [] },
+    { "id": 2, "category_id": 2, "sku_code": "DEMO-02", "barcode": null, "name": "香蕉（测试）", "series": "小食", "unit": "斤", "list_price": 5, "cost_price": 2, "safety_stock": 2, "status": "on_sale", "created_at": "2026-10-27T09:05:00+08:00", "category": "小食", "tags": [] },
+    { "id": 3, "category_id": 1, "sku_code": "DEMO-03", "barcode": null, "name": "鲜榨橙汁（测试）", "series": "饮品", "unit": "杯", "list_price": 8, "cost_price": 4, "safety_stock": 2, "status": "on_sale", "created_at": "2026-10-27T09:06:00+08:00", "category": "饮品", "tags": [] },
+    { "id": 4, "category_id": 2, "sku_code": "DEMO-04", "barcode": null, "name": "烤肠（测试）", "series": "小食", "unit": "根", "list_price": 5, "cost_price": 2, "safety_stock": 2, "status": "on_sale", "created_at": "2026-10-27T09:06:00+08:00", "category": "小食", "tags": [] },
+    { "id": 5, "category_id": 2, "sku_code": "DEMO-05", "barcode": null, "name": "棉花糖（测试）", "series": "小食", "unit": "个", "list_price": 3, "cost_price": 1, "safety_stock": 2, "status": "on_sale", "created_at": "2026-10-27T09:07:00+08:00", "category": "小食", "tags": [] },
+    { "id": 6, "category_id": 1, "sku_code": "DEMO-06", "barcode": null, "name": "气球（测试）", "series": "饮品", "unit": "个", "list_price": 2, "cost_price": 0.5, "safety_stock": 2, "status": "on_sale", "created_at": "2026-10-27T09:07:00+08:00", "category": "饮品", "tags": [] }
+  ],
+  "tags": [],
+  "combos": [],
+  "orders": [
+    { "id": 1, "order_no": "SO20261028001", "status": "paid", "channel": "wechat", "item_count": 3, "total_amount": 18, "paid_amount": 18, "paid_at": "2026-10-28T10:05:00+08:00", "created_at": "2026-10-28T10:04:50+08:00", "note": null, "cancel_reason": null, "cancelled_at": null },
+    { "id": 2, "order_no": "SO20261028002", "status": "paid", "channel": "alipay", "item_count": 3, "total_amount": 15, "paid_amount": 15, "paid_at": "2026-10-28T11:20:00+08:00", "created_at": "2026-10-28T11:19:40+08:00", "note": null, "cancel_reason": null, "cancelled_at": null },
+    { "id": 3, "order_no": "SO20261028003", "status": "paid", "channel": "wechat", "item_count": 4, "total_amount": 32, "paid_amount": 32, "paid_at": "2026-10-28T13:45:00+08:00", "created_at": "2026-10-28T13:44:30+08:00", "note": null, "cancel_reason": null, "cancelled_at": null },
+    { "id": 4, "order_no": "SO20261028004", "status": "paid", "channel": "wechat", "item_count": 7, "total_amount": 31, "paid_amount": 31, "paid_at": "2026-10-28T15:10:00+08:00", "created_at": "2026-10-28T15:09:20+08:00", "note": null, "cancel_reason": null, "cancelled_at": null },
+    { "id": 5, "order_no": "SO20261028005", "status": "pending", "channel": null, "item_count": 4, "total_amount": 12, "paid_amount": null, "paid_at": null, "created_at": "2026-10-28T16:30:00+08:00", "note": "先挂单", "cancel_reason": null, "cancelled_at": null }
+  ],
+  "orderItems": [
+    { "id": 1, "order_id": 1, "line_no": 1, "item_type": "product", "product_id": 1, "product_name": "苹果（测试）", "combo_id": null, "quantity": 3, "unit_price": 6, "line_amount": 18, "is_gift": false, "created_at": "2026-10-28T10:04:50+08:00", "combo_selections": [] },
+    { "id": 2, "order_id": 2, "line_no": 1, "item_type": "product", "product_id": 2, "product_name": "香蕉（测试）", "combo_id": null, "quantity": 2, "unit_price": 5, "line_amount": 10, "is_gift": false, "created_at": "2026-10-28T11:19:40+08:00", "combo_selections": [] },
+    { "id": 3, "order_id": 2, "line_no": 2, "item_type": "product", "product_id": 4, "product_name": "烤肠（测试）", "combo_id": null, "quantity": 1, "unit_price": 5, "line_amount": 5, "is_gift": false, "created_at": "2026-10-28T11:19:40+08:00", "combo_selections": [] },
+    { "id": 4, "order_id": 3, "line_no": 1, "item_type": "product", "product_id": 3, "product_name": "鲜榨橙汁（测试）", "combo_id": null, "quantity": 4, "unit_price": 8, "line_amount": 32, "is_gift": false, "created_at": "2026-10-28T13:44:30+08:00", "combo_selections": [] },
+    { "id": 5, "order_id": 4, "line_no": 1, "item_type": "product", "product_id": 4, "product_name": "烤肠（测试）", "combo_id": null, "quantity": 5, "unit_price": 5, "line_amount": 25, "is_gift": false, "created_at": "2026-10-28T15:09:20+08:00", "combo_selections": [] },
+    { "id": 6, "order_id": 4, "line_no": 2, "item_type": "product", "product_id": 5, "product_name": "棉花糖（测试）", "combo_id": null, "quantity": 2, "unit_price": 3, "line_amount": 6, "is_gift": false, "created_at": "2026-10-28T15:09:20+08:00", "combo_selections": [] },
+    { "id": 7, "order_id": 5, "line_no": 1, "item_type": "product", "product_id": 1, "product_name": "苹果（测试）", "combo_id": null, "quantity": 1, "unit_price": 6, "line_amount": 6, "is_gift": false, "created_at": "2026-10-28T16:30:00+08:00", "combo_selections": [] },
+    { "id": 8, "order_id": 5, "line_no": 2, "item_type": "product", "product_id": 6, "product_name": "气球（测试）", "combo_id": null, "quantity": 3, "unit_price": 2, "line_amount": 6, "is_gift": false, "created_at": "2026-10-28T16:30:00+08:00", "combo_selections": [] }
+  ],
+  "adjustments": [],
+  "movements": [
+    { "id": 1, "product_id": 1, "movement_type": "in", "quantity": 20, "balance_after": 20, "ref_type": "purchase", "ref_id": null, "ref_no": null, "note": "测试采购入库", "created_at": "2026-10-27T09:10:00+08:00" },
+    { "id": 2, "product_id": 2, "movement_type": "in", "quantity": 20, "balance_after": 20, "ref_type": "purchase", "ref_id": null, "ref_no": null, "note": "测试采购入库", "created_at": "2026-10-27T09:10:00+08:00" },
+    { "id": 3, "product_id": 3, "movement_type": "in", "quantity": 15, "balance_after": 15, "ref_type": "purchase", "ref_id": null, "ref_no": null, "note": "测试采购入库", "created_at": "2026-10-27T09:10:00+08:00" },
+    { "id": 4, "product_id": 4, "movement_type": "in", "quantity": 30, "balance_after": 30, "ref_type": "purchase", "ref_id": null, "ref_no": null, "note": "测试采购入库", "created_at": "2026-10-27T09:10:00+08:00" },
+    { "id": 5, "product_id": 5, "movement_type": "in", "quantity": 20, "balance_after": 20, "ref_type": "purchase", "ref_id": null, "ref_no": null, "note": "测试采购入库", "created_at": "2026-10-27T09:10:00+08:00" },
+    { "id": 6, "product_id": 6, "movement_type": "in", "quantity": 50, "balance_after": 50, "ref_type": "purchase", "ref_id": null, "ref_no": null, "note": "测试采购入库", "created_at": "2026-10-27T09:10:00+08:00" },
+    { "id": 7, "product_id": 1, "movement_type": "out", "quantity": -3, "balance_after": 17, "ref_type": "order", "ref_id": 1, "ref_no": "SO20261028001", "note": null, "created_at": "2026-10-28T10:04:50+08:00" },
+    { "id": 8, "product_id": 2, "movement_type": "out", "quantity": -2, "balance_after": 18, "ref_type": "order", "ref_id": 2, "ref_no": "SO20261028002", "note": null, "created_at": "2026-10-28T11:19:40+08:00" },
+    { "id": 9, "product_id": 4, "movement_type": "out", "quantity": -1, "balance_after": 29, "ref_type": "order", "ref_id": 2, "ref_no": "SO20261028002", "note": null, "created_at": "2026-10-28T11:19:40+08:00" },
+    { "id": 10, "product_id": 3, "movement_type": "out", "quantity": -4, "balance_after": 11, "ref_type": "order", "ref_id": 3, "ref_no": "SO20261028003", "note": null, "created_at": "2026-10-28T13:44:30+08:00" },
+    { "id": 11, "product_id": 4, "movement_type": "out", "quantity": -5, "balance_after": 24, "ref_type": "order", "ref_id": 4, "ref_no": "SO20261028004", "note": null, "created_at": "2026-10-28T15:09:20+08:00" },
+    { "id": 12, "product_id": 5, "movement_type": "out", "quantity": -2, "balance_after": 18, "ref_type": "order", "ref_id": 4, "ref_no": "SO20261028004", "note": null, "created_at": "2026-10-28T15:09:20+08:00" },
+    { "id": 13, "product_id": 1, "movement_type": "out", "quantity": -1, "balance_after": 16, "ref_type": "order", "ref_id": 5, "ref_no": "SO20261028005", "note": null, "created_at": "2026-10-28T16:30:00+08:00" },
+    { "id": 14, "product_id": 6, "movement_type": "out", "quantity": -3, "balance_after": 47, "ref_type": "order", "ref_id": 5, "ref_no": "SO20261028005", "note": null, "created_at": "2026-10-28T16:30:00+08:00" }
+  ],
+  "balances": { "1": 16, "2": 18, "3": 11, "4": 24, "5": 18, "6": 47 },
+  "alerts": [],
+  "paymentCodes": {},
+  "seq": { "order": 6, "item": 9, "adj": 1, "mov": 15, "alert": 1, "product": 7, "combo": 1, "category": 3 }
+}
