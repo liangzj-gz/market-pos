@@ -1613,16 +1613,18 @@
 .v-register .reg-search-scan .catalog-search { flex: 1; min-width: 0; width: auto; }
 .reg-scan-button { flex: none; min-height: 32px; color: var(--blue); background: var(--blue-soft); }
 .barcode-scanner { margin-top: 10px; }
-.pay-datetime { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 8px; }
-.pay-datetime .input { width: 100%; min-width: 0; min-height: 42px; border-radius: var(--r-pill); background: var(--fill); text-align: center; font-size: 16px; }
-.pay-time-value { display: grid; place-items: center; background: var(--fill); border-radius: var(--r-pill); font-size: var(--fs-lg); }
-.time-wheel { position: relative; margin: 8px 0 0; isolation: isolate; }
-.time-wheel-band { position: absolute; left: 0; right: 0; top: 88px; height: 44px; border-radius: var(--r-pill); background: var(--fill); z-index: -1; pointer-events: none; }
-.time-wheel-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: min(70%, 260px); margin: auto; }
-.time-wheel-track { height: 220px; padding-block: 88px; overflow-y: auto; overscroll-behavior-y: contain; scroll-snap-type: y mandatory; scrollbar-width: none; touch-action: pan-y; -webkit-mask-image: linear-gradient(transparent, black 30%, black 70%, transparent); mask-image: linear-gradient(transparent, black 30%, black 70%, transparent); }
+/* 年月日时分同排显示，滚轮内的拖动不传递给收款页。 */
+.time-wheel { position: relative; margin-top: 6px; padding: 0 6px; isolation: isolate; border: 1px solid var(--stroke); border-radius: var(--r-md); background: var(--glass-strong); }
+.time-wheel-band { position: absolute; left: 5px; right: 5px; top: 50px; height: 32px; border-radius: var(--r-pill); background: var(--fill); z-index: -1; pointer-events: none; }
+.time-wheel-columns { display: grid; grid-template-columns: minmax(0, 1.35fr) repeat(4, minmax(0, 1fr)); gap: 2px; }
+.time-wheel-column { min-width: 0; }
+.time-wheel-label { display: block; height: 18px; line-height: 18px; text-align: center; color: var(--label-2); font-size: 10px; }
+.time-wheel-track { height: 96px; padding-block: 32px; overflow-y: auto; overscroll-behavior-y: contain; scroll-snap-type: y mandatory; scrollbar-width: none; touch-action: pan-y; -webkit-mask-image: linear-gradient(transparent, black 32%, black 68%, transparent); mask-image: linear-gradient(transparent, black 32%, black 68%, transparent); }
+.time-wheel-track.is-dragging { scroll-snap-type: none; }
 .time-wheel-track::-webkit-scrollbar { display: none; }
-.time-wheel-option { height: 44px; line-height: 44px; text-align: center; font-size: 30px; font-weight: 400; font-variant-numeric: tabular-nums; letter-spacing: -.02em; color: var(--label-3); scroll-snap-align: center; user-select: none; cursor: pointer; }
-.time-wheel-option.is-selected { color: var(--label); }
+.time-wheel-option { height: 32px; line-height: 32px; text-align: center; font-size: 21px; font-weight: 400; font-variant-numeric: tabular-nums; letter-spacing: -.02em; color: var(--label-3); scroll-snap-align: center; user-select: none; cursor: pointer; }
+.time-wheel-option.is-selected { color: var(--label); font-weight: 550; }
+.time-wheel-column:first-child .time-wheel-option { font-size: 18px; }
 .time-wheel.is-disabled { pointer-events: none; opacity: .6; }
 .barcode-camera { position: relative; overflow: hidden; aspect-ratio: 16 / 9; max-height: 260px; border-radius: var(--r-sm); background: var(--fill-2); }
 .barcode-camera video { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: cover; object-position: center; }

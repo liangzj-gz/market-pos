@@ -33,12 +33,14 @@ export const UiPaySheet = {
       adjustReason: '',
       paidDate: now.slice(0, 10),
       paidTime: now.slice(11),
-      maxPaidAt: now,
       err: ''
     };
   },
   computed: {
-    paidAt() { return this.paidDate && this.paidTime ? this.paidDate + 'T' + this.paidTime : ''; },
+    paidAt: {
+      get() { return this.paidDate && this.paidTime ? this.paidDate + 'T' + this.paidTime : ''; },
+      set(value) { [this.paidDate, this.paidTime] = value.split('T'); }
+    },
     paymentCode() { return store.db.paymentCodes?.[this.channel] || ''; },
     totalNum() { return num(this.total); },
     paidNum() { return num(this.paid); },
@@ -153,12 +155,7 @@ export const UiPaySheet = {
 
       <div class="field">
         <span class="field-label">收款时间</span>
-        <div class="pay-datetime">
-          <input class="input input-mono" type="date" v-model="paidDate" :max="maxPaidAt.slice(0, 10)" @focus="maxPaidAt = localDateTime()" aria-label="收款日期">
-          <span class="pay-time-value mono" aria-live="polite">{{ paidTime }}</span>
-        </div>
-        <ui-time-wheel ref="timeWheel" v-model="paidTime" :disabled="submitting" />
-        <p class="field-hint">日期点击日历选择，小时和分钟可直接上下滑动。</p>
+        <ui-time-wheel ref="timeWheel" v-model="paidAt" :disabled="submitting" />
       </div>
 
       <div class="field-err" v-if="err">{{ err }}</div>
