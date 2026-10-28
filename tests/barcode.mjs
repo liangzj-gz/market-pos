@@ -150,3 +150,66 @@ instance.active = false;
 scanner.watch.active.call(instance, false);
 assert.equal(instance.running, false);
 console.log('常驻扫码在收款等窗口中禁用与暂停检查通过');
+
+// 模拟硬件接口，验证短闪及异步关闭；实际亮灯仍需手机验收。
+function torchScanner(capability = true, apply) {
+  const calls = [];
+  const track = {
+    getCapabilities: () => ({ torch: capability }),
+    applyConstraints: constraints => {
+      const value = constraints.advanced[0].torch;
+      calls.push(value);
+      return apply ? apply(value) : Promise.resolve();
+    },
+    stop() {}
+  };
+  const scannerInstance = makeScanner();
+  scannerInstance.running = true;
+  scannerInstance._stream = { getVideoTracks: () => [track], getTracks: () => [track] };
+  return { scannerInstance, calls };
+}
+let torchTest = torchScanner();
+let flashEnd, flashDuration;
+globalThis.setTimeout = (callback, duration) => { flashEnd = callback; flashDuration = duration; return 1; };
+try { await torchTest.scannerInstance.flashSuccess(); }
+finally { globalThis.setTimeout = realTimeout; }
+assert.deepEqual(torchTest.calls, [true]);
+assert.equal(flashDuration, 150);
+await torchTest.scannerInstance.flashSuccess();
+assert.deepEqual(torchTest.calls, [true]); // 同一短闪未结束时不叠加请求。
+flashEnd();
+assert.deepEqual(torchTest.calls, [true, false]);
+assert.equal(torchTest.scannerInstance._torchTrack, null);
+
+for (const capability of [undefined, false, [false]]) {
+  torchTest = torchScanner(capability);
+  // undefined 不走函数默认参数。
+  if (capability === undefined) torchTest.scannerInstance._stream.getVideoTracks()[0].getCapabilities = () => ({});
+  await torchTest.scannerInstance.flashSuccess();
+  assert.deepEqual(torchTest.calls, []);
+}
+torchTest = torchScanner(true, () => Promise.reject(new Error('系统拒绝闪光灯')));
+await torchTest.scannerInstance.flashSuccess();
+assert.equal(torchTest.scannerInstance.running, true);
+assert.equal(torchTest.scannerInstance.error, '');
+assert.equal(torchTest.scannerInstance._torchTrack, null);
+
+let finishTorchOn;
+torchTest = torchScanner([false, true], on => on ? new Promise(resolve => { finishTorchOn = resolve; }) : Promise.resolve());
+const pendingFlash = torchTest.scannerInstance.flashSuccess();
+torchTest.scannerInstance.stop();
+finishTorchOn();
+await pendingFlash;
+assert.deepEqual(torchTest.calls, [true, false, false]); // 迟到的开灯完成后也必须关灯。
+assert.equal(torchTest.scannerInstance._torchTimer, null);
+assert.equal(torchTest.scannerInstance.running, false);
+
+torchTest = torchScanner();
+torchTest.scannerInstance.showSuccess();
+await Promise.resolve();
+assert.equal(torchTest.scannerInstance.confirming, true);
+assert.deepEqual(torchTest.calls, [true]);
+torchTest.scannerInstance.stop();
+assert.deepEqual(torchTest.calls, [true, false]);
+assert.equal(torchTest.scannerInstance._torchTimer, null);
+console.log('成功后短闪、无硬件支持、系统拒绝、停止扫码及迟到请求关灯检查通过');

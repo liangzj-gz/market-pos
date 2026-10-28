@@ -39,11 +39,43 @@ export const UiBarcodeScanner = {
       clearTimeout(this._successTimer);
       this.confirming = true;
       this._successTimer = setTimeout(() => { this.confirming = false; }, 500);
+      this.flashSuccess();
+    },
+    async flashSuccess() {
+      if (!this.running || this.active === false || this._torchTrack) return;
+      const track = this._stream?.getVideoTracks?.()[0];
+      const generation = this._generation;
+      try {
+        const torch = track?.getCapabilities?.().torch;
+        if (!(torch === true || (Array.isArray(torch) && torch.includes(true)))) return;
+        this._torchTrack = track;
+        await track.applyConstraints({ advanced: [{ torch: true }] });
+        // 开灯请求可能在关闭扫码或切换镜头后才完成，及时关掉旧镜头的灯。
+        if (generation !== this._generation || this._torchTrack !== track) {
+          await track.applyConstraints({ advanced: [{ torch: false }] });
+          return;
+        }
+        this._torchTimer = setTimeout(() => this.stopFlash(), 150);
+      } catch {
+        // 不支持或系统拒绝闪光灯时，保留原有录入和屏幕成功提示。
+        if (this._torchTrack === track) this.stopFlash();
+      }
+    },
+    stopFlash() {
+      clearTimeout(this._torchTimer);
+      this._torchTimer = null;
+      const track = this._torchTrack;
+      this._torchTrack = null;
+      if (track) {
+        try { Promise.resolve(track.applyConstraints({ advanced: [{ torch: false }] })).catch(() => {}); }
+        catch { /* 旧镜头已停止时无需继续控制闪光灯。 */ }
+      }
     },
     stop() {
       clearTimeout(this._successTimer);
       this.confirming = false;
       this._generation++;
+      this.stopFlash();
       this._controls?.stop(); this._controls = null;
       this._stream?.getTracks().forEach(track => track.stop()); this._stream = null;
       if (this.$refs.video) this.$refs.video.srcObject = null;
