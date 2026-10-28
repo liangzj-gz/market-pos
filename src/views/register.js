@@ -501,7 +501,7 @@ export const RegisterView = {
             <ui-icon name="close" :size="15" />
           </button>
         </div>
-        <button class="btn btn-sm reg-scan-button" @click="openScanner" aria-label="扫码录入商品">扫码</button>
+        <button v-if="dockScanner" class="btn btn-sm reg-scan-button" @click="openScanner" aria-label="扫码录入商品">扫码</button>
         </div>
         <div class="chips-scroll catalog-tags" v-if="tags.length" role="group" aria-label="商品标签筛选">
           <button class="chip" :class="{ 'is-on': tag === 'all' }" :aria-pressed="tag === 'all'" @click="tag = 'all'">全部标签</button>
@@ -674,6 +674,7 @@ export const RegisterView = {
       <span class="cart-bar-text"><b class="mono">{{ money(total) }}</b><em>{{ hasItems ? '查看本单 · ' + lines + ' 行商品' : '点商品开始选购' }}</em></span>
       <ui-icon name="chevronUp" :size="15" v-if="hasItems" />
     </button>
+    <button class="btn cart-direct-scan" @click="openScanner" aria-label="扫码录入商品">扫码</button>
     <button class="btn btn-primary cart-direct-pay" :disabled="!hasItems" @click="openPay">收款</button>
   </div>
 

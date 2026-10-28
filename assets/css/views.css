@@ -1509,6 +1509,10 @@
 .cart-summary .cart-bar-count { color: var(--bg); }
 .cart-summary .cart-bar-text em { opacity: 1; color: var(--label-3); }
 .cart-direct-pay { min-width: 80px; border-radius: var(--r-pill); }
+.cart-direct-scan { flex: none; min-width: 72px; min-height: 44px; border-radius: var(--r-pill); background: var(--blue-soft); color: var(--blue); }
+.cart-bar .cart-direct-pay { flex: none; min-height: 44px; }
+.cart-bar .cart-bar-text { min-width: 0; }
+.cart-bar .cart-bar-text b, .cart-bar .cart-bar-text em { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 899px) {
   .v-register { padding-bottom: 90px; }
   .v-register .root-section:last-child > .prod-group:last-child { min-height: calc(var(--reg-pane-height) - var(--reg-toolbar-height) - var(--topbar-h)); }
