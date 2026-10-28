@@ -36,6 +36,13 @@ export const RegisterView = {
     },
     frequent() { return frequentIds.value; },
     demand() { return cartDemandByProduct(); },
+    scanItems() {
+      return Object.entries(this.demand).filter(([, qty]) => qty > 0).map(([id, qty]) => {
+        const product = productById(store.db, Number(id));
+        const line = this.cart.find(item => item.type === 'product' && String(item.id) === id);
+        return { id, name: product?.name || line?.name || '未知商品', qty, unit: product?.unit || '件' };
+      });
+    },
     combos() { return combosOnSale.value; },
     tags() {
       return tagLibrary.value.map(t => ({
@@ -102,6 +109,7 @@ export const RegisterView = {
     }
   },
   watch: {
+    hasItems(value) { if (!value) { this.scanFeedback = ''; this.scanTone = 'info'; } },
     rootGroups() { this._anchor = null; this.$nextTick(this.refreshCategories); },
     pickTab() {
       this._anchor = null;
@@ -160,8 +168,7 @@ export const RegisterView = {
       const match = matchBarcode(store.db.products, code);
       if (match.state !== 'ok') { this.scanFeedback = match.message; this.scanTone = 'warn'; return; }
       addProduct(match.product);
-      this.scanFeedback = '已加入「' + match.product.name + '」 ' + money(match.product.list_price)
-        + '，该商品已选 ' + this.inCart(match.product) + ' 件';
+      this.scanFeedback = '已加入「' + match.product.name + '」';
       this.scanTone = 'ok';
       this.scanSuccess++;
     },
@@ -401,7 +408,7 @@ export const RegisterView = {
   template: `
 <div class="v-register">
   <ui-sheet v-if="scanning" title="扫码录入商品" @close="scanning = false">
-    <ui-barcode-scanner :feedback="scanFeedback" :tone="scanTone" :success-key="scanSuccess" @scan="scanProduct" />
+    <ui-barcode-scanner :feedback="scanFeedback" :tone="scanTone" :success-key="scanSuccess" :items="scanItems" @scan="scanProduct" />
     <template #foot><button class="btn btn-primary grow" @click="scanning = false">完成选品 · 本单 {{ pieces }} 件</button></template>
   </ui-sheet>
   <div class="reg-layout">
@@ -521,7 +528,7 @@ export const RegisterView = {
         <section v-if="dockScanner" class="reg-scan-dock" aria-label="常驻扫码区">
           <div class="reg-scan-dock-head"><b>扫码选品</b><span>扫描后直接加入本单</span></div>
           <ui-barcode-scanner ref="dockedScanner" class="reg-dock-scanner"
-            :feedback="scanFeedback" :tone="scanTone" :success-key="scanSuccess"
+            :feedback="scanFeedback" :tone="scanTone" :success-key="scanSuccess" :items="scanItems"
             :active="!paying && !receipt && !comboPick && !confirmClear" @scan="scanProduct" />
         </section>
         <div class="cart-head">

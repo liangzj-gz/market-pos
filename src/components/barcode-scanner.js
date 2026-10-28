@@ -17,7 +17,7 @@ function loadDecoder() {
 
 export const UiBarcodeScanner = {
   name: 'UiBarcodeScanner',
-  props: { feedback: { type: String, default: '' }, tone: { type: String, default: 'info' }, successKey: { type: Number, default: 0 }, active: { type: Boolean, default: true } },
+  props: { feedback: { type: String, default: '' }, tone: { type: String, default: 'info' }, successKey: { type: Number, default: 0 }, active: { type: Boolean, default: true }, items: { type: Array, default: null } },
   emits: ['scan'],
   data() { return { manual: '', starting: false, running: false, confirming: false, error: '', cameras: [], deviceId: '' }; },
   watch: { successKey() { this.showSuccess(); }, active(value) { if (value) this.start(); else this.stop(); } },
@@ -141,6 +141,19 @@ export const UiBarcodeScanner = {
         <strong>已加入本单</strong>
       </div>
     </div>
+    <p v-if="items !== null" class="barcode-message barcode-feedback" :class="'is-' + tone" role="status" aria-live="polite" aria-atomic="true">{{ feedback || '支持 Code 128、EAN、UPC 等商品条码。' }}</p>
+    <section v-if="items !== null" class="barcode-summary" aria-label="本单商品汇总">
+      <div class="barcode-summary-head"><strong>本单商品</strong><span>{{ items.length }} 种 · 当前数量</span></div>
+      <div v-if="items.length" class="barcode-summary-list" tabindex="0" role="region" aria-label="商品数量列表">
+        <table>
+          <thead><tr><th scope="col">商品</th><th scope="col">数量</th></tr></thead>
+          <tbody><tr v-for="item in items" :key="item.id">
+            <td>{{ item.name }}</td><td><b class="mono">{{ item.qty }}</b><span>{{ item.unit }}</span></td>
+          </tr></tbody>
+        </table>
+      </div>
+      <p v-else class="barcode-summary-empty">还未加入商品，扫码后在这里查看数量</p>
+    </section>
     <div class="barcode-camera-actions">
       <button class="btn btn-sm btn-primary" v-if="!running && !starting" @click="start" :disabled="!active">开启摄像头</button>
       <button class="btn btn-sm" v-else @click="stop">{{ starting ? '取消启动' : '暂停扫码' }}</button>
@@ -150,7 +163,7 @@ export const UiBarcodeScanner = {
       </select>
     </div>
     <p v-if="error" class="barcode-message is-warn" role="alert">{{ error }}</p>
-    <p class="barcode-message" :class="'is-' + tone" role="status" aria-live="polite">{{ feedback || '支持 Code 128、EAN、UPC 等商品条码。' }}</p>
+    <p v-if="items === null" class="barcode-message" :class="'is-' + tone" role="status" aria-live="polite">{{ feedback || '支持 Code 128、EAN、UPC 等商品条码。' }}</p>
     <p class="field-hint">同一条码停留在镜头中只录入一次；移开约 1 秒后重新扫入可再次录入。</p>
     <form class="barcode-manual" @submit.prevent="submitManual">
       <input class="input input-mono" v-model="manual" placeholder="也可手动输入条码" aria-label="手动输入商品条码" autocomplete="off" autocapitalize="off" spellcheck="false">

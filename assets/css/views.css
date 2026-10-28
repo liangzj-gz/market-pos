@@ -1619,6 +1619,20 @@
 .barcode-message { font-size: var(--fs-sm); line-height: 1.5; margin: 10px 0 5px; overflow-wrap: anywhere; }
 .barcode-message.is-warn { color: var(--red); }
 .barcode-message.is-ok { color: var(--green); }
+.barcode-feedback { margin: 10px 0; padding: 10px 12px; border-radius: var(--r-sm); background: var(--fill); }
+.barcode-feedback.is-ok { font-size: var(--fs-xl); font-weight: 650; line-height: 1.45; background: var(--green-soft); }
+.barcode-summary { margin: 10px 0; border: 1px solid var(--stroke); border-radius: var(--r-sm); overflow: hidden; }
+.barcode-summary-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; padding: 8px 10px; background: var(--fill); font-size: var(--fs-sm); }
+.barcode-summary-head span { color: var(--label-2); font-size: var(--fs-xs); }
+.barcode-summary-list { max-height: 166px; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: thin; }
+.barcode-summary table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: var(--fs-sm); }
+.barcode-summary th, .barcode-summary td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--stroke); overflow-wrap: anywhere; }
+.barcode-summary th { position: sticky; top: 0; z-index: 1; background: var(--bg); color: var(--label-2); font-size: var(--fs-xs); font-weight: 500; }
+.barcode-summary th:last-child, .barcode-summary td:last-child { width: 86px; text-align: right; white-space: nowrap; }
+.barcode-summary td b { font-size: var(--fs-lg); }
+.barcode-summary td span { margin-left: 5px; color: var(--label-2); font-size: var(--fs-xs); }
+.barcode-summary tbody tr:last-child td { border-bottom: 0; }
+.barcode-summary-empty { padding: 10px; margin: 0; color: var(--label-2); font-size: var(--fs-sm); }
 .barcode-manual { display: flex; align-items: center; gap: 7px; margin-top: 10px; }
 .barcode-manual .input { flex: 1; min-width: 0; }
 .barcode-manual .btn { flex: none; }
@@ -1671,6 +1685,13 @@
 .reg-dock-scanner .barcode-camera-actions { gap: 5px; margin-top: 6px; }
 .reg-dock-scanner .barcode-camera-actions .btn, .reg-dock-scanner .barcode-camera-actions .select { min-height: 28px; padding: 3px 6px; font-size: 11px; }
 .reg-dock-scanner .barcode-message { font-size: 11px; line-height: 1.4; margin: 6px 0 0; }
+.reg-dock-scanner .barcode-feedback { padding: 7px 9px; }
+.reg-dock-scanner .barcode-feedback.is-ok { font-size: var(--fs-lg); }
+.reg-dock-scanner .barcode-summary { margin: 7px 0; }
+.reg-dock-scanner .barcode-summary-head { padding: 5px 8px; }
+.reg-dock-scanner .barcode-summary-list { max-height: 108px; }
+.reg-dock-scanner .barcode-summary th, .reg-dock-scanner .barcode-summary td { padding: 5px 8px; }
+.reg-dock-scanner .barcode-summary td b { font-size: var(--fs-md); }
 .reg-dock-scanner > .field-hint { display: none; }
 .reg-dock-scanner .barcode-manual { margin-top: 7px; gap: 5px; }
 .reg-dock-scanner .barcode-manual .input, .reg-dock-scanner .barcode-manual .btn { min-height: 30px; padding: 4px 8px; font-size: var(--fs-xs); }
