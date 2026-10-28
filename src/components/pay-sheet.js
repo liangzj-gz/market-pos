@@ -4,11 +4,16 @@ import { UiPaymentCode } from './payment-code.js';
 import { store } from '../data/store.js';
 import { num, r2, money, moneyNum, ADJUST_TYPES, ADJUST_HINT, CHANNEL_TXT } from '../util/format.js';
 import { roundingSuggestions } from '../domain/cart.js';
-import { UiDateTimeWheel, localDateTime } from './date-time-wheel.js';
+
+function localDateTime() {
+  const d = new Date();
+  const pad = value => String(value).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 export const UiPaySheet = {
   name: 'UiPaySheet',
-  components: { UiSheet, UiPaymentCode, UiDateTimeWheel },
+  components: { UiSheet, UiPaymentCode },
   props: {
     total: { type: Number, required: true },
     pieces: { type: Number, default: 0 },
@@ -25,7 +30,7 @@ export const UiPaySheet = {
       adjustType: '',
       adjustReason: '',
       paidAt: localDateTime(),
-      timeEditing: false,
+      maxPaidAt: localDateTime(),
       err: ''
     };
   },
@@ -49,7 +54,7 @@ export const UiPaySheet = {
     total(v) { if (!this.touched) this.paid = moneyNum(v); }
   },
   methods: {
-    money, moneyNum,
+    money, moneyNum, localDateTime,
     hint(t) { return ADJUST_HINT[t] || ''; },
     setPaid(v) { this.touched = true; this.paid = v === '' ? '' : String(v); this.err = ''; },
     bump(d) { this.setPaid(moneyNum(r2(this.paidNum + d))); },
@@ -142,16 +147,15 @@ export const UiPaySheet = {
 
       <div class="field">
         <span class="field-label">收款时间</span>
-        <button class="input pay-time-trigger" type="button" :aria-expanded="timeEditing" aria-label="修改收款时间" @click="timeEditing = !timeEditing"><span class="mono">{{ paidAt.replace('T', ' ') }}</span><span>修改</span></button>
-        <ui-date-time-wheel v-if="timeEditing" :value="paidAt" @confirm="paidAt = $event; timeEditing = false; err = ''" @cancel="timeEditing = false" />
-        <p class="field-hint">默认填入当前日期时间，点击修改后可上下滑动年月日、时分。</p>
+        <input class="input input-mono" type="datetime-local" v-model="paidAt" :max="maxPaidAt" @focus="maxPaidAt = localDateTime()" aria-label="收款时间">
+        <p class="field-hint">默认填入当前日期时间，点击可修改为实际收款时间。</p>
       </div>
 
       <div class="field-err" v-if="err">{{ err }}</div>
 
       <template #foot>
         <button class="btn" @click="$emit('close')" :disabled="submitting">取消</button>
-        <button class="btn btn-primary btn-checkout" @click="submit" :disabled="submitting || timeEditing">
+        <button class="btn btn-primary btn-checkout" @click="submit" :disabled="submitting">
           <span v-if="submitting" class="spinner"></span>
           <template v-else>确认收款 {{ money(paidNum) }}</template>
         </button>
