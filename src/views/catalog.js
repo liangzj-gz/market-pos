@@ -454,8 +454,12 @@ export const CatalogView = {
         if (im.file) {
           if (!PREVIEW) {
             if (!store.uid) { toast('登录状态异常，请重新登录', 'warn'); return; }
-            const up = await uploadProductImage(store.uid, im.blob, im.type, im.hash);
-            if (!up.ok) { toast(up.error || '商品图上传失败', 'warn'); return; }
+            const up0 = await uploadProductImage(store.uid, im.blob, im.type, im.hash);
+            /* 网络抖动时补传一次，避免用户点几次都失败 */
+            const up = (!up0.ok && /网络/.test(String(up0.error || '')))
+              ? await uploadProductImage(store.uid, im.blob, im.type, im.hash)
+              : up0;
+            if (!up.ok) { toast(up.error ? `商品图上传失败：${up.error}` : '商品图上传失败，请重试', 'warn'); return; }
             imagePath = up.path;
           }
         } else if (im.removed) {

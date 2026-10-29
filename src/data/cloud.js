@@ -17,13 +17,34 @@ export function cloudAvailable() {
   return !!(window.WorkBuddyCloud && typeof window.WorkBuddyCloud.createWorkBuddyCloud === 'function');
 }
 
+/* 云存储的 SDK 会在请求里带 x-client-info 和 x-upsert，
+   而云网关的 CORS 允许头清单里没有这两个：
+   Authorization,X-Wb-Webapp-Access-Key,Content-Type,Accept,Prefer,Range,
+   Content-Range,If-Match,If-None-Match,X-Request-Id,X-Device-Id,X-Wb-Webapp-Language
+   只要页面和接口不同源（在应用预览面板里打开、嵌在宿主里、换域名访问），
+   浏览器的预检就会直接失败并抛 "Failed to fetch"，表现是商品图既传不上也显示不出来；
+   而数据库接口不带这两个头，所以数据和页面都正常，只有图片出问题。
+   这里包一层 fetch 把不被允许的头去掉，请求语义不变，跨源也能走通。 */
+const CORS_BLOCKED_HEADERS = ['x-client-info', 'x-upsert'];
+
+function cloudFetch(input, init) {
+  let opts = init;
+  if (opts && opts.headers) {
+    const headers = new Headers(opts.headers);
+    CORS_BLOCKED_HEADERS.forEach(name => headers.delete(name));
+    opts = { ...opts, headers };
+  }
+  return fetch(input, opts);
+}
+
 export function getClient() {
   if (client) return client;
   if (!cloudAvailable()) throw new Error('云端 SDK 没有加载成功，请刷新页面重试');
   client = window.WorkBuddyCloud.createWorkBuddyCloud({
     endpoint: cloudConfig.endpoint,
     oauthRelayBaseUrl: cloudConfig.oauthRelayBaseUrl,
-    publishableKey: cloudConfig.publishableKey
+    publishableKey: cloudConfig.publishableKey,
+    fetch: cloudFetch
   });
   return client;
 }
