@@ -416,6 +416,7 @@ export async function refreshMaster() {
     try {
       const res = await rpc('load_snapshot');
       if (res.ok) assembleSnapshot(res.data);
+      return res;
     } finally { refreshing = null; }
   })();
   return refreshing;
@@ -427,6 +428,7 @@ export async function ensureDashboard(force) {
   if (!force && store.dash) return;
   const res = await rpc('dashboard');
   if (res.ok) store.dash = res.data;
+  return res;
 }
 
 /* ---------- 订单分页查询 ---------- */
@@ -446,7 +448,7 @@ export async function fetchOrdersPage(query, opts = {}) {
     p_keyword: q.keyword, p_limit: page.limit, p_offset: offset
   });
   page.loading = false;
-  if (!res.ok) { store.sync.error = res.error; return; }
+  if (!res.ok) { store.sync.error = res.error; return res; }
   const d = res.data || {};
   page.query = q;
   page.total = Number(d.total) || 0;
@@ -456,6 +458,38 @@ export async function fetchOrdersPage(query, opts = {}) {
   page.hasMore = page.offset < page.total;
   page.loaded = true;
   page.rows = reset ? (d.rows || []) : page.rows.concat(d.rows || []);
+  return res;
+}
+
+/* 手动刷新只更新服务器缓存，保留购物车、搜索和当前页筛选。 */
+export async function refreshData({ statsRange, detailId } = {}) {
+  if (PREVIEW) return { ok: true, preview: true };
+  if (store.auth.status !== 'ready') return { ok: false, error: '请先登录后再刷新' };
+  if (store.sync.state === 'saving') return { ok: false, error: '正在保存，请稍后刷新' };
+  const fail = res => {
+    store.sync.state = 'unsynced';
+    store.sync.error = res?.error || '读取服务器数据失败，请重试';
+    return { ok: false, error: store.sync.error };
+  };
+  const master = await refreshMaster();
+  if (!master?.ok) return fail(master);
+  const dash = await ensureDashboard(true);
+  if (!dash?.ok) return fail(dash);
+  if (store.ui.view === 'orders') {
+    const orders = await fetchOrdersPage(store.ordersPage.query || {}, { reset: true });
+    if (!orders?.ok) return fail(orders);
+  }
+  if (statsRange) {
+    const stats = await rpc('stats_summary', { p_from: statsRange.from, p_to: statsRange.to });
+    if (!stats.ok) return fail(stats);
+    store.stats = stats.data;
+  }
+  store.details = {};
+  if (detailId && !await fetchOrderDetail(detailId)) return fail({ error: '订单详情刷新失败，请重试' });
+  store.sync.state = 'saved';
+  store.sync.error = '';
+  store.savedAt = new Date().toISOString();
+  return { ok: true };
 }
 
 /* ---------- 订单详情 ---------- */

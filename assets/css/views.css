@@ -1431,12 +1431,30 @@
   .bi-sheet-hint { display: block; margin: 0 0 8px; }
 }
 
+/* 移动导航压缩高度，商品区随导航尺寸自动让位。 */
+.topbar { gap: 6px; flex-shrink: 0; }
+.topbar .brand { gap: 6px; font-size: 14px; white-space: nowrap; }
+.topbar .brand-mark { width: 20px; height: 20px; border-radius: 6px; }
+.topbar .brand-mark svg { width: 13px; height: 13px; }
+.topbar .badge-demo { padding: 2px 6px; font-size: 10px; white-space: nowrap; }
+.topbar-refresh { display: flex; align-items: center; justify-content: center; flex: none; width: 26px; height: 26px; border-radius: var(--r-xs); color: var(--blue); }
+.topbar-refresh:hover { background: var(--blue-soft); }
+.topbar-refresh:disabled { opacity: .45; cursor: wait; }
+.topbar-refresh .is-spinning { animation: spin .7s linear infinite; }
+.tabbar .tab { gap: 1px; font-size: 9px; }
+.tabbar .tab svg { width: 18px; height: 18px; }
+.tabbar .tab .count-badge { top: 2px; }
 /* 开单：左侧分类锚点与商品列表联动，列表标题仅作静态分隔。 */
 .v-register .pick-bar { padding: 8px 0; margin: -8px 0 10px; background: var(--bg); border-bottom: 0; }
 .reg-mode-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 7px; }
-.reg-modes { margin-bottom: 0; }
+.reg-modes { margin-bottom: 0; flex: none; }
+.reg-mode-row .reg-search-scan { flex: 1; min-width: 0; width: auto; }
+.reg-mode-row .catalog-search { flex: 1; min-width: 0; }
+.reg-mode-row .input-search .input { padding-left: 28px; padding-right: 28px; }
+.reg-mode-row .input-search > svg { left: 8px; }
+.reg-mode-row .pick-clear { right: 2px; width: 24px; height: 24px; }
 .reg-modes .seg-btn { min-height: 28px; padding: 3px 14px; font-size: var(--fs-sm); }
-.reg-frequent { min-height: 28px; padding: 3px 10px; font-size: var(--fs-xs); }
+.reg-frequent { flex: none; min-height: 28px; padding: 3px 10px; font-size: var(--fs-xs); }
 .v-register .pick-bar .input { min-height: 32px; height: 32px; padding-top: 4px; padding-bottom: 4px; font-size: var(--fs-sm); }
 .v-register .reg-filter-row { gap: 6px; }
 .v-register .reg-filter-row .catalog-search { min-width: 0; flex-basis: 240px; }
@@ -1511,6 +1529,8 @@
   .v-register .pick-name { margin-top: 3px; font-size: 12px; line-height: 1.2; }
 }
 @media (max-width: 360px) {
+  .reg-mode-row { gap: 5px; }
+  .reg-modes .seg-btn { padding-right: 9px; padding-left: 9px; }
   /* 窄屏略收分类栏，给两列商品的大图与价格留出空间。 */
   .v-register .reg-browse { grid-template-columns: 66px minmax(0, 1fr); gap: 8px; }
   .v-register .pick-cell { padding: 6px; }

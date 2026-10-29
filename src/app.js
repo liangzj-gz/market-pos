@@ -1,7 +1,7 @@
 /* 应用外壳：登录门禁、导航、全局抽屉、提示层 */
 /* 版本号统一在 index.html 的 importmap 里管理（?v=），这里不直接带，
    否则同一个模块会出现两份实例（app 的 store 与视图的 store 不同步） */
-import { store, openAlerts, pendingOrders, markReady, bootstrap } from './data/store.js';
+import { store, openAlerts, pendingOrders, markReady, bootstrap, refreshData, toast } from './data/store.js';
 import { registerComponents } from './components/index.js';
 import { UiStockInSheet, UiStockTakeSheet } from './components/stock-sheets.js';
 import { LoginView } from './views/login.js';
@@ -43,6 +43,7 @@ const App = {
   data() {
     return {
       store,
+      refreshing: false,
       nav: NAV,
       views: VIEWS,
       /* 移动端底部五个位置：前四个直达，「更多」收其余 */
@@ -69,6 +70,7 @@ const App = {
     syncing() { return ['pending', 'saving'].includes(store.sync.state); },
     syncBad() { return ['unsynced', 'conflict'].includes(store.sync.state); },
     syncLabel() {
+      if (this.refreshing) return '刷新中';
       if (store.sync.state === 'local') return '本地预览';
       if (store.sync.state === 'unsynced') return '未同步';
       if (store.sync.state === 'saving' || store.sync.state === 'pending') return '同步中';
@@ -77,6 +79,17 @@ const App = {
     }
   },
   methods: {
+    async refresh() {
+      if (this.refreshing || this.syncing) return;
+      this.refreshing = true;
+      try {
+        const current = this.$refs.currentView;
+        const res = await refreshData({ statsRange: this.view === 'stats' ? current?.range : null, detailId: current?.detailId });
+        toast(res.preview ? '本地预览模式，无需连接服务器' : res.ok ? '已获取服务器最新数据' : res.error || '刷新失败，请重试', res.preview ? 'info' : res.ok ? 'ok' : 'warn');
+      } catch (e) {
+        toast('刷新失败，请检查网络后重试', 'warn');
+      } finally { this.refreshing = false; }
+    },
     go(key) {
       store.ui.view = key;
       store.ui.sheet = null;
@@ -154,10 +167,14 @@ const App = {
     <span class="badge-demo" :class="{ 'badge-bad': syncBad }">
       <ui-icon name="cloud" :size="12" /> {{ syncLabel }}
     </span>
+    <button class="topbar-refresh" :disabled="refreshing || syncing" :aria-busy="refreshing"
+            aria-label="刷新服务器数据" title="刷新服务器数据" @click="refresh">
+      <ui-icon name="refresh" :size="16" :class="{ 'is-spinning': refreshing }" />
+    </button>
   </header>
 
   <main class="content">
-    <component :is="current" :key="view" />
+    <component :is="current" :key="view" ref="currentView" />
   </main>
 
   <!-- 移动端底部标签栏 -->

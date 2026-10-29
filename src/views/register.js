@@ -489,22 +489,22 @@ export const RegisterView = {
             <button class="seg-btn" :class="{ 'is-on': pickTab === 'products' }" role="tab" :aria-selected="pickTab === 'products'" @click="pickTab = 'products'">商品</button>
             <button class="seg-btn" :class="{ 'is-on': pickTab === 'combos' }" role="tab" :aria-selected="pickTab === 'combos'" @click="pickTab = 'combos'">套餐</button>
           </div>
+          <div v-if="pickTab === 'products'" class="reg-search-scan">
+            <div class="input-search catalog-search">
+              <ui-icon name="search" :size="17" />
+              <input class="input" v-model="reg.search" type="search" enterkeyhint="search"
+                     placeholder="搜名称 / SKU / 分类 / 标签" aria-label="搜索商品">
+              <button v-if="reg.search" class="pick-clear" @click="clearSearch" aria-label="清空搜索">
+                <ui-icon name="close" :size="15" />
+              </button>
+            </div>
+            <button v-if="dockScanner" class="btn btn-sm reg-scan-button" @click="openScanner" aria-label="扫码录入商品">扫码</button>
+          </div>
           <button v-if="pickTab === 'products'" class="chip chip-freq reg-frequent" :class="{ 'is-on': reg.onlyFrequent }" :aria-pressed="reg.onlyFrequent"
                   @click="reg.onlyFrequent = !reg.onlyFrequent"><ui-icon name="spark" :size="14" /> 常卖</button>
         </div>
         <template v-if="pickTab === 'products'">
         <div class="catalog-filter-row reg-filter-row">
-        <div class="reg-search-scan">
-        <div class="input-search catalog-search">
-          <ui-icon name="search" :size="17" />
-          <input class="input" v-model="reg.search" type="search" enterkeyhint="search"
-                 placeholder="搜名称 / SKU / 分类 / 标签" aria-label="搜索商品">
-          <button v-if="reg.search" class="pick-clear" @click="clearSearch" aria-label="清空搜索">
-            <ui-icon name="close" :size="15" />
-          </button>
-        </div>
-        <button v-if="dockScanner" class="btn btn-sm reg-scan-button" @click="openScanner" aria-label="扫码录入商品">扫码</button>
-        </div>
         <div class="chips-scroll catalog-tags" v-if="tags.length" role="group" aria-label="商品标签筛选">
           <button class="chip" :class="{ 'is-on': tag === 'all' }" :aria-pressed="tag === 'all'" @click="tag = 'all'">全部标签</button>
           <button v-for="t in tags" :key="t.name" class="chip"
