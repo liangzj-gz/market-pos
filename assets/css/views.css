@@ -1468,6 +1468,14 @@
 .reg-group-label b { color: var(--label-2); font-weight: 600; }
 .reg-group-label em { font-style: normal; margin-left: auto; font-variant-numeric: tabular-nums; }
 .v-register .pick-grid { gap: 8px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 96px), 1fr)); }
+@media (max-width: 640px) {
+  /* 手机上固定两列，三列会把名字和库存挤成两行 */
+  .v-register .pick-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 641px) and (max-width: 899px) {
+  /* iPad 竖屏：比手机多两列 */
+  .v-register .pick-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
 .v-register .pick-cell { height: 120px; min-height: 0; padding: 8px; box-shadow: none; background: var(--glass-strong); border-color: var(--stroke); }
 .v-register .pick-cell:active { transform: none; }
 .v-register .pick-cell.has-qty { background: linear-gradient(var(--blue-soft), var(--blue-soft)), var(--bg); border-color: var(--blue-line); }
