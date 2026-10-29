@@ -9,6 +9,7 @@ export const ICONS = {
   stats: '<path d="M3.6 20.4h16.8"/><path d="M6.6 20.4v-6.2M11.4 20.4V5.6M16.2 20.4v-9.4"/>',
   settings: '<path d="M4 7.2h10M18 7.2h2M4 16.8h2M10 16.8h10"/><circle cx="16" cy="7.2" r="2.1"/><circle cx="8" cy="16.8" r="2.1"/>',
   search: '<circle cx="11" cy="11" r="6.4"/><path d="m15.8 15.8 4.4 4.4"/>',
+  camera: '<path d="M4 8.4h3l1.4-2h7.2L17 8.4h3v10.2H4z"/><circle cx="12" cy="13.2" r="3.2"/>',
   close: '<path d="m6.2 6.2 11.6 11.6M17.8 6.2 6.2 17.8"/>',
   check: '<path d="m4.8 12.6 4.8 4.8 9.6-10.4"/>',
   chevronRight: '<path d="m9.4 5.6 6.4 6.4-6.4 6.4"/>',

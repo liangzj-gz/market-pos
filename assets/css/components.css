@@ -194,6 +194,25 @@
   .form-grid .span-2 { grid-column: span 1; }
 }
 .field-hint { font-size: var(--fs-xs); color: var(--label-3); margin-top: 5px; line-height: 1.45; }
+
+/* 商品图上传：拍照 / 相册 */
+.prod-photo-row { display: flex; align-items: flex-start; gap: 12px; }
+.prod-photo-box {
+  position: relative; width: 96px; height: 96px; flex: none; padding: 0;
+  border-radius: 14px; overflow: hidden; border: 1px solid var(--stroke);
+  background: #fff; display: flex; align-items: center; justify-content: center; color: var(--label-3);
+}
+.prod-photo-box.is-empty { border-style: dashed; border-color: var(--stroke-strong); background: rgba(255,255,255,.52); color: var(--blue); }
+.prod-photo-box img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.prod-photo-empty { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: var(--fs-xs); }
+.prod-photo-empty em { font-style: normal; }
+.prod-photo-busy {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 5px;
+  background: rgba(255,255,255,.9); font-size: var(--fs-xs); color: var(--label-3);
+}
+.prod-photo-busy .spinner { width: 13px; height: 13px; border-color: rgba(10,132,255,.22); border-top-color: var(--blue); }
+.prod-photo-info { flex: 1; min-width: 0; padding-top: 2px; }
+@media (max-width: 520px) { .prod-photo-box { width: 84px; height: 84px; } }
 .field-err  { font-size: var(--fs-sm); color: var(--red); margin-top: 6px; min-height: 18px; }
 
 /* ============ Chips（胶囊，两级选中） ============ */

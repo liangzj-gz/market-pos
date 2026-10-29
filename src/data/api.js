@@ -150,6 +150,51 @@ export async function signPaymentCodePath(path) {
   }
 }
 
+/* 上传一张商品图（512px 方图，已在手机端压好）。
+   path 带内容指纹 + 随机尾号，换图必换地址，旧图可安全删除。 */
+export async function uploadProductImage(uid, blob, type, hash) {
+  const ext = type === 'image/webp' ? 'webp' : 'jpg';
+  const name = `p-${hash || 'img'}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}.${ext}`;
+  if (SELF_HOSTED) {
+    try {
+      const path = `users/${uid}/products/${name}`;
+      const base64 = await new Promise((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(String(fr.result).split(',')[1] || '');
+        fr.onerror = reject;
+        fr.readAsDataURL(blob);
+      });
+      const r = await selfHostFetch('/api/files', { path, base64, contentType: type });
+      return r.ok ? { ok: true, path } : { ok: false, error: r.error || '商品图上传失败' };
+    } catch (e) {
+      return { ok: false, error: '商品图上传失败，请重试' };
+    }
+  }
+  try {
+    const st = storageApi();
+    const path = st.userPath(uid, 'products/' + name);
+    const { error } = await st.from().upload(path, blob, { contentType: type, upsert: false });
+    if (error) return { ok: false, error: readable(error, '商品图上传失败，请重试') };
+    return { ok: true, path };
+  } catch (e) {
+    return { ok: false, error: readable(e, '商品图上传失败，请重试') };
+  }
+}
+
+/* 商品图路径 → 可展示 URL（与收款码同一套签名/鉴权方式） */
+export async function signProductImagePath(path) {
+  if (!path) return '';
+  if (/^data:image\//.test(path)) return path;
+  if (SELF_HOSTED) return `/api/files/${path}?t=${encodeURIComponent(selfHostToken())}`;
+  try {
+    const { data, error } = await storageApi().from().createSignedUrl(path, 60 * 60 * 24 * 365);
+    if (error || !data || !data.signedUrl) return '';
+    return data.signedUrl;
+  } catch (e) {
+    return '';
+  }
+}
+
 /* 删除一个 storage 对象（失败不阻塞业务，文件多了顶多占点空间） */
 export async function removeStorageObject(path) {
   if (!path || /^data:image\//.test(path)) return;

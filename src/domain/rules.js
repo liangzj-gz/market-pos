@@ -779,9 +779,15 @@ export function upsertProduct(db, data) {
   const series = prev && (prev.category_id || null) === categoryId && prev.series
     ? prev.series
     : (deepest || String(data.series || '').trim() || '未分类');
+  let imagePath = prev ? (prev.image_path || null) : null;
+  if (Object.prototype.hasOwnProperty.call(data, 'image_path')) {
+    const raw = String(data.image_path || '').trim();
+    imagePath = raw && (raw.startsWith('users/') || raw.startsWith('data:image/')) ? raw : null;
+  }
   const payload = {
     name: String(data.name || '').trim(),
     category_id: categoryId,
+    image_path: imagePath,
     tags,
     /* 系列/品类是分类路径的快照，订单、统计、库存等既有视图继续可用 */
     series,

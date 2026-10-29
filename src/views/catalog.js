@@ -1,8 +1,11 @@
 /* 商品与套餐：两级分类 + 自定义标签，分类和标签都由用户自己维护 */
 import {
-  store, actions, stockState, productById, toast,
-  rootCategories, categoryRows, tagLibrary, childrenIn, categoryProductCount
+  store, actions, stockState, productById, toast, PREVIEW,
+  rootCategories, categoryRows, tagLibrary, childrenIn, categoryProductCount,
+  productImageSrc, loadProductImage
 } from '../data/store.js';
+import { uploadProductImage } from '../data/api.js';
+import { compressProductImage } from '../util/image.js';
 import { money } from '../util/format.js';
 import { parseProductImport, matrixToTsv, IMPORT_SAMPLE, IMPORT_COLUMNS } from '../domain/import.js';
 import { deriveComboGroups, comboHasGroups, productsInMid } from '../domain/rules.js';
@@ -53,6 +56,9 @@ export const CatalogView = {
       confirmDelete: null,
       confirmOffSale: null,
       saving: false,
+      prodImage: null,
+      imgBusy: false,
+      imgError: '',
       /* 分类 / 标签管理 */
       catManager: false,
       catTab: 'categories',
@@ -365,9 +371,18 @@ export const CatalogView = {
     /* ---------- 商品表单 ---------- */
     openNew() {
       this.prodForm = EMPTY_PRODUCT();
+      this.prodImage = { dataUrl: '', path: null, file: null, blob: null, type: '', hash: '', removed: false };
+      this.imgBusy = false;
+      this.imgError = '';
     },
     openEdit(p) {
       const path = this.pathArr(p.category_id);
+      this.prodImage = { dataUrl: productImageSrc(p), path: p.image_path || null, file: null, blob: null, type: '', hash: '', removed: false };
+      this.imgBusy = false;
+      this.imgError = '';
+      if (p.image_path && !this.prodImage.dataUrl) {
+        loadProductImage(p).then(url => { if (url && this.prodImage && !this.prodImage.file) this.prodImage.dataUrl = url; });
+      }
       this.prodForm = {
         id: p.id, sku_code: p.sku_code, name: p.name,
         cat1: path[0] ? path[0].id : '',
@@ -388,16 +403,73 @@ export const CatalogView = {
     },
     addFormTagName(t) { if (!this.prodForm.tags.includes(t)) this.prodForm.tags.push(t); },
     removeFormTag(t) { this.prodForm.tags = this.prodForm.tags.filter(x => x !== t); },
+    imageOf(p) { return productImageSrc(p); },
+    triggerImagePick(source) {
+      const input = source === 'camera' ? this.$refs.imgCamera : this.$refs.imgGallery;
+      if (input) input.click();
+    },
+    async onImagePick(event) {
+      const input = event.target;
+      const file = input && input.files && input.files[0];
+      if (input) input.value = '';
+      if (!file || !this.prodImage) return;
+      this.imgBusy = true;
+      this.imgError = '';
+      try {
+        const img = await compressProductImage(file);
+        this.prodImage = {
+          ...this.prodImage,
+          dataUrl: img.dataUrl,
+          file,
+          blob: img.blob,
+          type: img.type,
+          hash: img.hash,
+          removed: false
+        };
+      } catch (e) {
+        this.imgError = e && e.message ? e.message : '图片处理失败，请重试';
+        toast(this.imgError, 'warn');
+      } finally {
+        this.imgBusy = false;
+      }
+    },
+    clearImage() {
+      if (!this.prodImage) return;
+      this.prodImage = { ...this.prodImage, dataUrl: '', file: null, blob: null, type: '', hash: '', removed: true };
+      this.imgError = '';
+    },
     async saveProduct() {
       const f = this.prodForm;
+      if (this.imgBusy) { toast('图片还在压缩，稍等一下', 'warn'); return; }
       this.saving = true;
-      const res = await actions.saveProduct({
-        ...f,
-        category_id: f.cat2 || f.cat1 || null,
-        tags: f.tags
-      });
-      this.saving = false;
-      if (res.ok) this.prodForm = null;
+      try {
+        const im = this.prodImage || {};
+        let imagePath = im.path || null;
+        if (im.file) {
+          if (!PREVIEW) {
+            if (!store.uid) { toast('登录状态异常，请重新登录', 'warn'); return; }
+            const up = await uploadProductImage(store.uid, im.blob, im.type, im.hash);
+            if (!up.ok) { toast(up.error || '商品图上传失败', 'warn'); return; }
+            imagePath = up.path;
+          }
+        } else if (im.removed) {
+          imagePath = null;
+        }
+        const payload = {
+          ...f,
+          category_id: f.cat2 || f.cat1 || null,
+          tags: f.tags,
+          image_path: imagePath
+        };
+        if (PREVIEW) {
+          if (im.file) payload.image_dataUrl = im.dataUrl;
+          else if (im.removed) payload.image_dataUrl = null;
+        }
+        const res = await actions.saveProduct(payload);
+        if (res.ok) { this.prodForm = null; this.prodImage = null; }
+      } finally {
+        this.saving = false;
+      }
     },
     toggle(p) {
       if (p.status === 'on_sale') { this.confirmOffSale = p; return; }
@@ -916,17 +988,25 @@ export const CatalogView = {
             <div class="prod-grid">
               <article class="prod-cell" v-for="p in mg.items" :key="p.id" :class="{ 'is-off': p.status === 'off_sale' }">
                 <button class="pc-open" @click="openEdit(p)" :aria-label="'编辑商品 ' + p.name">
-                  <span class="pc-top">
-                    <span class="pc-sku mono">{{ p.sku_code }}</span>
-                    <span class="tag tag-gray" v-if="p.status === 'off_sale'">停售</span>
-                  </span>
-                  <span class="pc-name" :title="p.name">{{ p.name }}</span>
-                  <span class="pc-sub xs muted">
-                    <span class="truncate">{{ subCatOf(p) }}</span>
-                  </span>
-                  <span class="pc-tags" v-if="(p.tags || []).length">
-                    <span v-for="t in p.tags.slice(0, 2)" :key="t" class="tag tag-brand pc-tag">#{{ t }}</span>
-                    <span v-if="p.tags.length > 2" class="pc-more muted">+{{ p.tags.length - 2 }}</span>
+                  <span class="pc-media">
+                    <span class="pc-thumb" :class="{ 'is-empty': !imageOf(p) }">
+                      <img v-if="imageOf(p)" :src="imageOf(p)" alt="" loading="lazy" decoding="async">
+                      <span v-else>{{ p.name.slice(0, 1) }}</span>
+                    </span>
+                    <span class="pc-info">
+                      <span class="pc-top">
+                        <span class="pc-sku mono">{{ p.sku_code }}</span>
+                        <span class="tag tag-gray" v-if="p.status === 'off_sale'">停售</span>
+                      </span>
+                      <span class="pc-name" :title="p.name">{{ p.name }}</span>
+                      <span class="pc-sub xs muted">
+                        <span class="truncate">{{ subCatOf(p) }}</span>
+                      </span>
+                      <span class="pc-tags" v-if="(p.tags || []).length">
+                        <span v-for="t in p.tags.slice(0, 2)" :key="t" class="tag tag-brand pc-tag">#{{ t }}</span>
+                        <span v-if="p.tags.length > 2" class="pc-more muted">+{{ p.tags.length - 2 }}</span>
+                      </span>
+                    </span>
                   </span>
                 </button>
                 <div class="pc-foot">
@@ -1158,6 +1238,27 @@ export const CatalogView = {
       一次要录好几个？<button type="button" class="tag-suggest" @click="prodForm = null; openImport()">用批量导入 →</button>
     </div>
     <div class="form-grid">
+      <div class="field span-2">
+        <label>商品图 <span class="muted">可选</span></label>
+        <div class="prod-photo-row">
+          <button type="button" class="prod-photo-box" :class="{ 'is-empty': !prodImage || !prodImage.dataUrl }"
+                  @click="triggerImagePick('gallery')" :aria-label="prodImage && prodImage.dataUrl ? '更换商品图' : '添加商品图'">
+            <img v-if="prodImage && prodImage.dataUrl" :src="prodImage.dataUrl" alt="商品图预览">
+            <span v-else class="prod-photo-empty"><ui-icon name="camera" :size="20" /><em>加图片</em></span>
+            <span v-if="imgBusy" class="prod-photo-busy"><i class="spinner"></i>压缩中</span>
+          </button>
+          <div class="prod-photo-info">
+            <div class="row" style="gap:6px;flex-wrap:wrap">
+              <button class="btn btn-sm" type="button" @click="triggerImagePick('camera')">拍照</button>
+              <button class="btn btn-sm" type="button" @click="triggerImagePick('gallery')">相册</button>
+              <button v-if="prodImage && prodImage.dataUrl" class="btn btn-sm btn-quiet" type="button" @click="clearImage">移除</button>
+            </div>
+            <div class="field-hint">{{ imgBusy ? '正在压缩到 512px…' : (imgError || (prodImage && prodImage.dataUrl ? '已压缩，保存后生效' : '拍照或从相册选一张，自动压缩，原图不上传')) }}</div>
+          </div>
+        </div>
+        <input ref="imgCamera" class="sr-only" type="file" accept="image/*" capture="environment" @change="onImagePick">
+        <input ref="imgGallery" class="sr-only" type="file" accept="image/*" @change="onImagePick">
+      </div>
       <div class="field span-2">
         <label>商品名称 *</label>
         <input class="input" v-model="prodForm.name" placeholder="可以带逗号，不用怕解析错" autofocus>

@@ -44,7 +44,7 @@ import {
   changePassword as changePasswordRemote
 } from './cloud.js';
 import {
-  rpc, newRequestId, uploadPaymentCodeImage, signPaymentCodePath, removeStorageObject,
+  rpc, newRequestId, uploadPaymentCodeImage, signPaymentCodePath, signProductImagePath, removeStorageObject,
   SELF_HOSTED, selfHostLogin, selfHostSetup, setSelfHostToken, selfHostToken
 } from './api.js';
 
@@ -59,6 +59,48 @@ export const PREVIEW = typeof location !== 'undefined' &&
 
 /* 只记「上次登录的手机号」这一条 UI 偏好，绝不存业务数据 */
 const PHONE_KEY = 'stall.cloud.phone.v1';
+
+/* 预览模式的商品图（仅本机演示，512px 小图，最多几 MB） */
+const PREVIEW_IMAGE_KEY = 'market-pos-preview-product-images';
+function loadPreviewImages() {
+  try { return JSON.parse(localStorage.getItem(PREVIEW_IMAGE_KEY) || '{}') || {}; } catch (e) { return {}; }
+}
+function persistPreviewImage(productId, dataUrl) {
+  const map = { ...(store.db.previewImages || {}) };
+  if (dataUrl) map[productId] = dataUrl;
+  else delete map[productId];
+  localStorage.setItem(PREVIEW_IMAGE_KEY, JSON.stringify(map));
+  store.db.previewImages = map;
+}
+
+/* 图片路径 → 可展示地址：预览读本机、云端按需签名（同一张只签一次） */
+const pendingImages = new Set();
+export function productImageSrc(p) {
+  if (!p) return '';
+  if (PREVIEW) return store.db.previewImages?.[p.id] || '';
+  if (!p.image_path || /^data:image\//.test(p.image_path)) return p.image_path || '';
+  if (!store.db.productImageUrls) store.db.productImageUrls = {};
+  const cached = store.db.productImageUrls[p.id];
+  if (cached) return cached;
+  if (!pendingImages.has(p.id)) {
+    pendingImages.add(p.id);
+    signProductImagePath(p.image_path)
+      .then(url => { if (url) store.db.productImageUrls[p.id] = url; })
+      .finally(() => pendingImages.delete(p.id));
+  }
+  return '';
+}
+
+export async function loadProductImage(p) {
+  if (!p || !p.image_path) return '';
+  if (PREVIEW) return store.db.previewImages?.[p.id] || '';
+  if (/^data:image\//.test(p.image_path)) return p.image_path;
+  if (!store.db.productImageUrls) store.db.productImageUrls = {};
+  if (store.db.productImageUrls[p.id]) return store.db.productImageUrls[p.id];
+  const url = await signProductImagePath(p.image_path);
+  if (url) store.db.productImageUrls[p.id] = url;
+  return url;
+}
 
 /* ============================================================
    建库（仅预览模式）：主数据 → 期初建账 → 回放 29 笔历史订单
@@ -310,6 +352,8 @@ function normalizeProduct(p) {
 
 function mergeProduct(rec) {
   const p = normalizeProduct(rec);
+  /* 图片路径变了就丢掉旧签名地址，下次渲染重新签 */
+  if (store.db.productImageUrls) delete store.db.productImageUrls[p.id];
   const i = store.db.products.findIndex(x => Number(x.id) === Number(p.id));
   if (i >= 0) store.db.products.splice(i, 1, { ...store.db.products[i], ...p });
   else store.db.products.push(p);
@@ -329,6 +373,7 @@ function assembleSnapshot(d) {
   const db = store.db;
   db.categories = d.categories || [];
   db.products = (d.products || []).map(normalizeProduct);
+  db.productImageUrls = {};
   db.tags = d.tags || [];
   db.combos = d.combos || [];
   db.balances = d.balances && typeof d.balances === 'object' ? d.balances : {};
@@ -518,6 +563,8 @@ export async function bootstrap() {
     store.auth.status = 'ready';
     store.auth.phone = '本地预览';
     store.db = buildSeedDb();
+    store.db.previewImages = loadPreviewImages();
+    store.db.productImageUrls = {};
     store.loaded = true;
     store.sync.state = 'local';
     return;
@@ -1102,10 +1149,31 @@ export const actions = {
 
   /* ---------- 商品 ---------- */
   async saveProduct(data) {
-    if (PREVIEW) return actR(() => upsertProduct(store.db, data));
+    if (PREVIEW) {
+      return actR(() => {
+        const payload = { ...data };
+        const imageChanged = Object.prototype.hasOwnProperty.call(data, 'image_dataUrl');
+        delete payload.image_dataUrl;
+        if (imageChanged) payload.image_path = null;
+        const p = upsertProduct(store.db, payload);
+        if (imageChanged) {
+          try { persistPreviewImage(p.id, data.image_dataUrl || ''); }
+          catch (e) { throw new Error('本机存储空间不足，请换一张小一点的图片'); }
+        }
+        return p;
+      });
+    }
     return actR(async () => {
+      const prev = data.id ? productById(store.db, data.id) : null;
+      const oldPath = prev && prev.image_path;
       const res = await rpc('save_product', { p_payload: data, p_request_id: newRequestId() });
       if (res.ok && res.data && res.data.product) mergeProduct(res.data.product);
+      if (res.ok) {
+        if (oldPath && oldPath !== data.image_path) removeStorageObject(oldPath);
+      } else if (data.image_path && data.image_path !== oldPath) {
+        /* 商品没保存成功，删掉刚上传的新图，避免孤儿文件 */
+        removeStorageObject(data.image_path);
+      }
       return res;
     });
   },

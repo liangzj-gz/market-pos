@@ -1,7 +1,8 @@
 /* 开单收银台：选货 → 看应收 → 收款，三步以内完成一单 */
 import {
   store, productsOnSale, combosOnSale, frequentIds,
-  stockState, balanceOf, actions, productById, comboById, tagLibrary, toast
+  stockState, balanceOf, actions, productById, comboById, tagLibrary, toast,
+  productImageSrc
 } from '../data/store.js';
 import { money, moneyNum, num, r2, int } from '../util/format.js';
 import {
@@ -279,6 +280,7 @@ export const RegisterView = {
       this.activeMid = mid;
     },
     money, moneyNum, num, r2, int,
+    imageOf(p) { return productImageSrc(p); },
     addProduct(p) { addProduct(p); this.bump(); },
     decreaseProduct(p) {
       const line = this.cart.find(l => l.key === 'p' + p.id);
@@ -568,7 +570,13 @@ export const RegisterView = {
         <div class="pick-grid">
           <article v-for="p in m.items" :key="p.id" class="pick-cell" :class="{ 'has-qty': inCart(p), 'is-low': stockLeft(p).low }">
             <button class="pick-product-main" @click="addProduct(p)" :aria-label="'加入 ' + p.name">
-              <span class="pick-name" :title="p.name">{{ p.name }}</span>
+              <span class="pick-head">
+                <span class="pick-thumb" :class="{ 'is-empty': !imageOf(p) }">
+                  <img v-if="imageOf(p)" :src="imageOf(p)" alt="" loading="lazy" decoding="async">
+                  <span v-else>{{ p.name.slice(0, 1) }}</span>
+                </span>
+                <span class="pick-name" :title="p.name">{{ p.name }}</span>
+              </span>
               <span class="pick-price mono">{{ money(p.list_price) }}</span>
               <span class="pick-stock" :class="{ low: stockLeft(p).low }">{{ stockLeft(p).text }}</span>
             </button>

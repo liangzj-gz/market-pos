@@ -101,6 +101,7 @@ CREATE TABLE IF NOT EXISTS products (
   cost_price    numeric(12,2)          CHECK (cost_price IS NULL OR cost_price >= 0),
   safety_stock  integer       NOT NULL DEFAULT 0 CHECK (safety_stock >= 0),
   barcode       text,
+  image_path    text,
   status        text          NOT NULL DEFAULT 'on_sale' CHECK (status IN ('on_sale','off_sale')),
   created_at    timestamptz   NOT NULL DEFAULT now(),
   updated_at    timestamptz   NOT NULL DEFAULT now(),

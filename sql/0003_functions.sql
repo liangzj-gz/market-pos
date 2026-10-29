@@ -133,6 +133,7 @@ DECLARE
   v_series   text;
   v_cat_name text;
   v_barcode  text := NULLIF(btrim(COALESCE(p_payload->>'barcode', '')), '');
+  v_image    text := NULLIF(btrim(COALESCE(p_payload->>'image_path', '')), '');
   v_tags     text[] := ARRAY[]::text[];
   v_tag      text;
   v_out      jsonb;
@@ -145,6 +146,9 @@ BEGIN
   ) THEN RAISE EXCEPTION '分类不存在' USING ERRCODE = 'P0001'; END IF;
   IF v_barcode IS NOT NULL AND char_length(v_barcode) > 128 THEN
     RAISE EXCEPTION '条码请控制在 128 个字符以内' USING ERRCODE = 'P0001';
+  END IF;
+  IF v_image IS NOT NULL AND v_image NOT LIKE 'users/%' THEN
+    RAISE EXCEPTION '图片路径不合法' USING ERRCODE = 'P0001';
   END IF;
 
   IF v_id IS NOT NULL THEN
@@ -172,7 +176,7 @@ BEGIN
     END IF;
     v_id := v3_next_id(p_owner, 'product');
     INSERT INTO products (owner_id, id, sku_code, name, category_id, series, category_name, unit,
-                          list_price, cost_price, safety_stock, barcode, status, created_at, updated_at)
+                          list_price, cost_price, safety_stock, barcode, image_path, status, created_at, updated_at)
     VALUES (p_owner, v_id, v_sku, v_name, v_cat, v_series, v_cat_name,
             COALESCE(NULLIF(btrim(COALESCE(p_payload->>'unit', '')), ''), '件'),
             round(COALESCE((p_payload->>'list_price')::numeric, 0), 2),
@@ -180,6 +184,7 @@ BEGIN
                  THEN NULL ELSE round((p_payload->>'cost_price')::numeric, 2) END,
             GREATEST(COALESCE((p_payload->>'safety_stock')::int, 0), 0),
             v_barcode,
+            v_image,
             CASE WHEN p_payload->>'status' = 'off_sale' THEN 'off_sale' ELSE 'on_sale' END,
             now(), now());
   ELSE
@@ -195,6 +200,7 @@ BEGIN
                         THEN NULL ELSE round((p_payload->>'cost_price')::numeric, 2) END,
       safety_stock = GREATEST(COALESCE((p_payload->>'safety_stock')::int, safety_stock), 0),
       barcode = COALESCE(v_barcode, barcode),
+      image_path = CASE WHEN p_payload ? 'image_path' THEN v_image ELSE image_path END,
       status = CASE WHEN p_payload->>'status' = 'off_sale' THEN 'off_sale'
                     WHEN p_payload->>'status' = 'on_sale' THEN 'on_sale' ELSE status END,
       updated_at = now()
