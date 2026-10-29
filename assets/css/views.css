@@ -1509,9 +1509,8 @@
 .v-register .pick-price { font-size: var(--fs-lg); line-height: 1.3; margin-top: 2px; }
 .v-register .pick-stock { line-height: 1.3; margin-top: 0; }
 @media (min-width: 641px) and (max-width: 899px) {
-  /* iPad 竖屏：两列（比原四列少两列），卡片与图片尺寸维持基础样式（2026-10-29 用户确认放弃横幅方案回退）。
-     此块必须放在基础规则之后，否则同特异性下会被后面的规则覆盖。 */
-  .v-register .pick-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* iPad 竖屏：比手机多两列（2026-10-29 回退到改动前原始四列布局） */
+  .v-register .pick-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 .pick-add, .pick-quantity { position: absolute; right: 7px; bottom: 7px; display: flex; align-items: center; justify-content: center; }
 .pick-add, .pick-quantity button { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 50%; color: var(--blue); background: var(--blue-soft); }
