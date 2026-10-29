@@ -1253,7 +1253,7 @@ export const CatalogView = {
               <button class="btn btn-sm" type="button" @click="triggerImagePick('gallery')">相册</button>
               <button v-if="prodImage && prodImage.dataUrl" class="btn btn-sm btn-quiet" type="button" @click="clearImage">移除</button>
             </div>
-            <div class="field-hint">{{ imgBusy ? '正在压缩到 512px…' : (imgError || (prodImage && prodImage.dataUrl ? '已压缩，保存后生效' : '拍照或从相册选一张，自动压缩，原图不上传')) }}</div>
+            <div class="field-hint">{{ imgBusy ? '正在压缩图片…' : (imgError || (prodImage && prodImage.dataUrl ? '已压缩，保存后生效' : '拍照或从相册选一张，自动压缩，原图不上传')) }}</div>
           </div>
         </div>
         <input ref="imgCamera" class="sr-only" type="file" accept="image/*" capture="environment" @change="onImagePick">
