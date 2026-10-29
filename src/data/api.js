@@ -151,9 +151,12 @@ export async function signPaymentCodePath(path) {
 }
 
 /* 上传一张商品图（512px 方图，已在手机端压好）。
-   path 带内容指纹 + 随机尾号，换图必换地址，旧图可安全删除。 */
+   path 带内容指纹 + 随机尾号，换图必换地址，旧图可安全删除。
+   扩展名一律跟着 blob 的真实类型走：老版本按「想压成的类型」命名，
+   结果出现 .webp 文件里装 PNG 字节，浏览器拉图直接渲染失败。 */
 export async function uploadProductImage(uid, blob, type, hash) {
-  const ext = type === 'image/webp' ? 'webp' : 'jpg';
+  const real = (blob && blob.type) || type || 'image/jpeg';
+  const ext = real === 'image/webp' ? 'webp' : real === 'image/png' ? 'png' : 'jpg';
   const name = `p-${hash || 'img'}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}.${ext}`;
   if (SELF_HOSTED) {
     try {
@@ -173,7 +176,7 @@ export async function uploadProductImage(uid, blob, type, hash) {
   try {
     const st = storageApi();
     const path = st.userPath(uid, 'products/' + name);
-    const { error } = await st.from().upload(path, blob, { contentType: type, upsert: false });
+    const { error } = await st.from().upload(path, blob, { contentType: real, upsert: false });
     if (error) return { ok: false, error: readable(error, '商品图上传失败，请重试') };
     return { ok: true, path };
   } catch (e) {
@@ -181,18 +184,36 @@ export async function uploadProductImage(uid, blob, type, hash) {
   }
 }
 
-/* 商品图路径 → 可展示 URL（SDK 签名上限 3600 秒，store 层负责到期续签） */
+/* 最近一次签名失败的原因，供界面提示与排查用（成功时清空） */
+export const signState = { lastError: null };
+
+/* 商品图路径 → 可展示 URL（SDK 签名上限 3600 秒，store 层负责到期续签）
+   网络抖动时退避重试，避免整列商品图空白；三次都失败才返回 '' 由调用方兜底 */
 export async function signProductImagePath(path) {
   if (!path) return '';
   if (/^data:image\//.test(path)) return path;
   if (SELF_HOSTED) return `/api/files/${path}?t=${encodeURIComponent(selfHostToken())}`;
-  try {
-    const { data, error } = await storageApi().from().createSignedUrl(path, 3600);
-    if (error || !data || !data.signedUrl) return '';
-    return data.signedUrl;
-  } catch (e) {
-    return '';
+  let last = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const { data, error } = await storageApi().from().createSignedUrl(path, 3600);
+      if (!error && data && data.signedUrl) { signState.lastError = null; return data.signedUrl; }
+      last = error || { message: '签名返回为空' };
+    } catch (e) {
+      last = e;
+    }
+    if (attempt < 2) await new Promise(r => setTimeout(r, 400 * (attempt + 1)));
   }
+  signState.lastError = {
+    path,
+    status: (last && (last.status || last.statusCode)) || 0,
+    code: (last && (last.statusCode || last.code || last.name)) || '',
+    message: (last && last.message) || '签名失败'
+  };
+  if (typeof console !== 'undefined' && console.warn) {
+    console.warn('[商品图] 签名失败', signState.lastError);
+  }
+  return '';
 }
 
 /* 删除一个 storage 对象（失败不阻塞业务，文件多了顶多占点空间） */

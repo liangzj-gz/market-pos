@@ -2,7 +2,7 @@
 import {
   store, actions, stockState, productById, toast, PREVIEW,
   rootCategories, categoryRows, tagLibrary, childrenIn, categoryProductCount,
-  productImageSrc, loadProductImage
+  productImageSrc, loadProductImage, retryProductImage
 } from '../data/store.js';
 import { uploadProductImage } from '../data/api.js';
 import { compressProductImage } from '../util/image.js';
@@ -404,6 +404,12 @@ export const CatalogView = {
     addFormTagName(t) { if (!this.prodForm.tags.includes(t)) this.prodForm.tags.push(t); },
     removeFormTag(t) { this.prodForm.tags = this.prodForm.tags.filter(x => x !== t); },
     imageOf(p) { return productImageSrc(p); },
+    onImageError(p) { retryProductImage(p); },
+    onPreviewError() {
+      if (this.prodImage && this.prodImage.file) return;
+      if (this.prodImage) this.prodImage = { ...this.prodImage, dataUrl: '' };
+      this.imgError = '这张图打不开，请重新选一张';
+    },
     triggerImagePick(source) {
       const input = source === 'camera' ? this.$refs.imgCamera : this.$refs.imgGallery;
       if (input) input.click();
@@ -990,7 +996,7 @@ export const CatalogView = {
                 <button class="pc-open" @click="openEdit(p)" :aria-label="'编辑商品 ' + p.name">
                   <span class="pc-media">
                     <span class="pc-thumb" :class="{ 'is-empty': !imageOf(p) }">
-                      <img v-if="imageOf(p)" :src="imageOf(p)" alt="" loading="lazy" decoding="async">
+                      <img v-if="imageOf(p)" :src="imageOf(p)" alt="" loading="lazy" decoding="async" @error="onImageError(p)">
                       <span v-else>{{ p.name.slice(0, 1) }}</span>
                     </span>
                     <span class="pc-info">
@@ -1243,7 +1249,7 @@ export const CatalogView = {
         <div class="prod-photo-row">
           <button type="button" class="prod-photo-box" :class="{ 'is-empty': !prodImage || !prodImage.dataUrl }"
                   @click="triggerImagePick('gallery')" :aria-label="prodImage && prodImage.dataUrl ? '更换商品图' : '添加商品图'">
-            <img v-if="prodImage && prodImage.dataUrl" :src="prodImage.dataUrl" alt="商品图预览">
+            <img v-if="prodImage && prodImage.dataUrl" :src="prodImage.dataUrl" alt="商品图预览" @error="onPreviewError">
             <span v-else class="prod-photo-empty"><ui-icon name="camera" :size="20" /><em>加图片</em></span>
             <span v-if="imgBusy" class="prod-photo-busy"><i class="spinner"></i>压缩中</span>
           </button>

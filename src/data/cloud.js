@@ -41,11 +41,22 @@ export const KIND_MSG = {
   rate_limited: '操作太频繁，请稍后再试'
 };
 
+/* 浏览器 fetch 断网/被拦截时抛的原生文案，不能直接展示给用户 */
+const NET_ERR_MSG = new Set([
+  'Failed to fetch',
+  'TypeError: Failed to fetch',
+  'Load failed',
+  'TypeError: Load failed',
+  'NetworkError when attempting to fetch resource.'
+]);
+
 export function readable(err, fallback) {
   if (!err) return fallback;
   const kind = err.kind || err.code;
   if (kind && KIND_MSG[kind]) return KIND_MSG[kind];
-  if (typeof err.message === 'string' && err.message && !/^[A-Z_]+$/.test(err.message)) return err.message;
+  const msg = typeof err.message === 'string' ? err.message.trim() : '';
+  if (msg && NET_ERR_MSG.has(msg)) return KIND_MSG.network;
+  if (msg && !/^[A-Z_]+$/.test(msg)) return msg;
   return fallback;
 }
 

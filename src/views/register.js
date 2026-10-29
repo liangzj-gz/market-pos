@@ -2,7 +2,7 @@
 import {
   store, productsOnSale, combosOnSale, frequentIds,
   stockState, balanceOf, actions, productById, comboById, tagLibrary, toast,
-  productImageSrc
+  productImageSrc, retryProductImage
 } from '../data/store.js';
 import { money, moneyNum, num, r2, int } from '../util/format.js';
 import {
@@ -316,6 +316,7 @@ export const RegisterView = {
     },
     money, moneyNum, num, r2, int,
     imageOf(p) { return productImageSrc(p); },
+    onImageError(p) { retryProductImage(p); },
     addProduct(p) { addProduct(p); this.bump(); },
     decreaseProduct(p) {
       const line = this.cart.find(l => l.key === 'p' + p.id);
@@ -632,7 +633,7 @@ export const RegisterView = {
             <button class="pick-product-main" @click="addProduct(p)" :aria-label="'加入 ' + p.name">
               <span class="pick-head">
                 <span class="pick-thumb" :class="{ 'is-empty': !imageOf(p) }">
-                  <img v-if="imageOf(p)" :src="imageOf(p)" alt="" loading="lazy" decoding="async">
+                  <img v-if="imageOf(p)" :src="imageOf(p)" alt="" loading="lazy" decoding="async" @error="onImageError(p)">
                   <span v-else>{{ p.name.slice(0, 1) }}</span>
                 </span>
                 <span class="pick-figures">

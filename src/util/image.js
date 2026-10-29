@@ -54,7 +54,22 @@ function toDataUrl(blob) {
 }
 
 export function imageExt(type) {
-  return type === 'image/webp' ? 'webp' : 'jpg';
+  if (type === 'image/webp') return 'webp';
+  if (type === 'image/png') return 'png';
+  return 'jpg';
+}
+
+/* 按文件头判断真实格式。
+   部分设备（iOS Safari 等）canvas.toBlob('image/webp') 不报错但静默返回 PNG，
+   如果按「请求的类型」命名，存出来的对象就是「.webp 里装着 PNG」：
+   上传可以成功、数据库路径也正确，但浏览器拉图时会因为声明类型与字节不一致而渲染失败。 */
+export function sniffImageType(bytes) {
+  if (!bytes || bytes.length < 12) return '';
+  if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
+      bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) return 'image/webp';
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return 'image/png';
+  return '';
 }
 
 export async function compressProductImage(file) {
@@ -94,8 +109,9 @@ export async function compressProductImage(file) {
       if (best.blob.size <= TARGET_BYTES) break;
     }
     const { blob, size } = best;
-    type = best.type;
     const bytes = new Uint8Array(await blob.arrayBuffer());
+    /* 以真实字节为准定格式与扩展名，绝不按「想压成什么」命名 */
+    type = sniffImageType(bytes) || best.type || blob.type || 'image/jpeg';
     return {
       blob,
       type,

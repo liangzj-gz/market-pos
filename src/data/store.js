@@ -45,7 +45,7 @@ import {
 } from './cloud.js';
 import {
   rpc, newRequestId, uploadPaymentCodeImage, signPaymentCodePath, signProductImagePath, removeStorageObject,
-  SELF_HOSTED, selfHostLogin, selfHostSetup, setSelfHostToken, selfHostToken
+  signState, SELF_HOSTED, selfHostLogin, selfHostSetup, setSelfHostToken, selfHostToken
 } from './api.js';
 
 /* 登录页据此切换形态：自托管 = 密码登录 + 首次建号（无短信） */
@@ -76,22 +76,54 @@ function persistPreviewImage(productId, dataUrl) {
 /* 图片路径 → 可展示地址：预览读本机、云端按需签名（同一张只签一次）。
    签名 URL 有效期 3600 秒，缓存 45 分钟视为过期并后台续签，页面长开图片不会失效。 */
 const SIGNED_URL_TTL_MS = 45 * 60 * 1000;
+/* 签名失败后的冷却时间：失败不写冷却会被每帧渲染反复触发，等于自己把接口刷限流 */
+const SIGN_FAIL_COOLDOWN_MS = 30 * 1000;
 const pendingImages = new Set();
+/* 同一张图浏览器加载失败只强制重签一次，避免死循环 */
+const imgRetryUsed = new Map();
+let imageWarned = false;
+
+function warnImageOnce() {
+  if (imageWarned) return;
+  imageWarned = true;
+  const detail = signState.lastError;
+  try { toast(detail ? '有商品图加载失败，请重新上传这张图' : '有商品图加载失败，请检查网络后刷新', 'warn'); } catch (e) { /* 渲染早期忽略 */ }
+}
+
 export function productImageSrc(p) {
   if (!p) return '';
   if (PREVIEW) return store.db.previewImages?.[p.id] || '';
   if (!p.image_path || /^data:image\//.test(p.image_path)) return p.image_path || '';
   if (!store.db.productImageUrls) store.db.productImageUrls = {};
   const cached = store.db.productImageUrls[p.id];
-  if (cached && Date.now() - cached.at < SIGNED_URL_TTL_MS) return cached.url;
+  if (cached && cached.url && Date.now() - cached.at < SIGNED_URL_TTL_MS) return cached.url;
+  /* 刚失败过：冷却期内直接留空，不再重复打签名接口 */
+  if (cached && !cached.url && cached.at && Date.now() - cached.at < SIGN_FAIL_COOLDOWN_MS) return '';
   if (!pendingImages.has(p.id)) {
     pendingImages.add(p.id);
     /* 过期缓存先顶着显示，签好新地址再无缝换掉 */
     signProductImagePath(p.image_path)
-      .then(url => { if (url) store.db.productImageUrls[p.id] = { url, at: Date.now() }; })
+      .then(url => {
+        store.db.productImageUrls[p.id] = url ? { url, at: Date.now() } : { url: '', at: Date.now() };
+        if (!url) warnImageOnce();
+      })
+      .catch(() => {
+        store.db.productImageUrls[p.id] = { url: '', at: Date.now() };
+        warnImageOnce();
+      })
       .finally(() => pendingImages.delete(p.id));
   }
   return cached ? cached.url : '';
+}
+
+/* 签名地址过期或被拒时，<img> 会触发 error：删掉缓存强制重签一次 */
+export function retryProductImage(p) {
+  if (!p || p.id === undefined || p.id === null) return '';
+  const used = imgRetryUsed.get(String(p.id)) || 0;
+  if (used >= 1) return '';
+  imgRetryUsed.set(String(p.id), used + 1);
+  if (store.db.productImageUrls) delete store.db.productImageUrls[p.id];
+  return productImageSrc(p);
 }
 
 export async function loadProductImage(p) {
@@ -100,9 +132,9 @@ export async function loadProductImage(p) {
   if (/^data:image\//.test(p.image_path)) return p.image_path;
   if (!store.db.productImageUrls) store.db.productImageUrls = {};
   const cached = store.db.productImageUrls[p.id];
-  if (cached && Date.now() - cached.at < SIGNED_URL_TTL_MS) return cached.url;
+  if (cached && cached.url && Date.now() - cached.at < SIGNED_URL_TTL_MS) return cached.url;
   const url = await signProductImagePath(p.image_path);
-  if (url) store.db.productImageUrls[p.id] = { url, at: Date.now() };
+  store.db.productImageUrls[p.id] = url ? { url, at: Date.now() } : { url: '', at: Date.now() };
   return url;
 }
 
