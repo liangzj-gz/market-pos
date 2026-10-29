@@ -17,7 +17,7 @@ function loadDecoder() {
 
 export const UiBarcodeScanner = {
   name: 'UiBarcodeScanner',
-  props: { feedback: { type: String, default: '' }, tone: { type: String, default: 'info' }, successKey: { type: Number, default: 0 }, active: { type: Boolean, default: true }, items: { type: Array, default: null } },
+  props: { feedback: { type: String, default: '' }, tone: { type: String, default: 'info' }, successKey: { type: Number, default: 0 }, active: { type: Boolean, default: true }, items: { type: Array, default: null }, hideSummary: { type: Boolean, default: false } },
   emits: ['scan', 'change-quantity'],
   data() { return { manual: '', starting: false, running: false, confirming: false, error: '', cameras: [], deviceId: '' }; },
   watch: { successKey() { this.showSuccess(); }, active(value) { if (value) this.start(); else this.stop(); } },
@@ -142,7 +142,7 @@ export const UiBarcodeScanner = {
       </div>
     </div>
     <p v-if="items !== null" class="barcode-message barcode-feedback" :class="'is-' + tone" role="status" aria-live="polite" aria-atomic="true">{{ feedback || '支持 Code 128、EAN、UPC 等商品条码。' }}</p>
-    <section v-if="items !== null" class="barcode-summary" aria-label="本单商品汇总">
+    <section v-if="items !== null && !hideSummary" class="barcode-summary" aria-label="本单商品汇总">
       <div class="barcode-summary-head"><strong>本单商品</strong><span>{{ items.length }} 种 · 当前数量</span></div>
       <div v-if="items.length" class="barcode-summary-list" tabindex="0" role="region" aria-label="商品数量列表">
         <table>

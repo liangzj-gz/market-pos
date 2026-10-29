@@ -602,7 +602,7 @@ export const RegisterView = {
       <div class="cart-panel">
         <section v-if="dockScanner" class="reg-scan-dock" aria-label="常驻扫码区">
           <div class="reg-scan-dock-head"><b>扫码选品</b><span>扫描后直接加入本单</span></div>
-          <ui-barcode-scanner ref="dockedScanner" class="reg-dock-scanner"
+          <ui-barcode-scanner ref="dockedScanner" class="reg-dock-scanner" hide-summary
             :feedback="scanFeedback" :tone="scanTone" :success-key="scanSuccess" :items="scanItems"
             :active="!paying && !receipt && !comboPick && !confirmClear" @scan="scanProduct" @change-quantity="changeScanQuantity" />
         </section>
