@@ -51,6 +51,7 @@ export const CatalogView = {
       barcodeScanning: false,
       comboTarget: null,
       confirmDelete: null,
+      confirmOffSale: null,
       saving: false,
       /* 分类 / 标签管理 */
       catManager: false,
@@ -398,7 +399,15 @@ export const CatalogView = {
       this.saving = false;
       if (res.ok) this.prodForm = null;
     },
-    async toggle(p) { await actions.toggleProduct(p.id); },
+    toggle(p) {
+      if (p.status === 'on_sale') { this.confirmOffSale = p; return; }
+      actions.toggleProduct(p.id);
+    },
+    async confirmToggleOff() {
+      const p = this.confirmOffSale;
+      this.confirmOffSale = null;
+      if (p) await actions.toggleProduct(p.id);
+    },
 
     /* ---------- 批量导入 ---------- */
     openImport() {
@@ -1487,6 +1496,10 @@ export const CatalogView = {
       </div>
     </template>
   </ui-sheet>
+
+  <ui-confirm v-if="confirmOffSale" title="下架这个商品？"
+              :text="'「' + confirmOffSale.name + '」下架后开单页不再显示，库存和历史订单不受影响，随时可以重新上架。'"
+              confirm-text="下架" @yes="confirmToggleOff" @no="confirmOffSale = null" />
 
   <ui-confirm v-if="confirmDelete" title="删除套餐？"
               :text="'「' + confirmDelete.name + '」将被移除；如果已被历史订单引用，会自动改为停售以保留记录。'"
