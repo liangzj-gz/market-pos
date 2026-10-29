@@ -24,7 +24,7 @@ export const RegisterView = {
       paying: false, submitting: false, receipt: null, confirmClear: false,
       scanning: false, scanFeedback: '', scanTone: 'info', scanSuccess: 0,
       dockScanner: window.matchMedia('(min-width: 900px)').matches,
-      compactTags: window.matchMedia('(max-width: 640px)').matches, tagPickerOpen: false,
+      compactTags: window.matchMedia('(max-width: 640px)').matches, tagPickerOpen: false, searchExpanded: false,
       comboPick: null, pickGroups: [], activeRoot: null, activeMid: null, pickTab: 'products', tag: 'all'
     };
   },
@@ -115,6 +115,7 @@ export const RegisterView = {
     rootGroups() { this._anchor = null; this.$nextTick(this.refreshCategories); },
     pickTab() {
       this.tagPickerOpen = false;
+      this.searchExpanded = false;
       this._anchor = null;
       this.$nextTick(() => {
         this.refreshCategories();
@@ -128,6 +129,7 @@ export const RegisterView = {
     this._tagMedia = window.matchMedia('(max-width: 640px)');
     this._tagLayout = event => {
       this.compactTags = event.matches;
+      this.searchExpanded = event.matches && document.activeElement === this.$refs.productSearch;
       if (!event.matches) this.tagPickerOpen = false;
     };
     this._tagMedia.addEventListener('change', this._tagLayout);
@@ -182,6 +184,18 @@ export const RegisterView = {
     if (this._categoryRaf) cancelAnimationFrame(this._categoryRaf);
   },
   methods: {
+    startSearch() {
+      if (this.compactTags) this.searchExpanded = true;
+    },
+    finishSearch(event) {
+      if (event?.isComposing || event?.keyCode === 229) return;
+      event?.preventDefault();
+      this.searchExpanded = false;
+      this.$refs.productSearch?.blur();
+    },
+    leaveSearch(event) {
+      if (!event.currentTarget.contains(event.relatedTarget)) this.searchExpanded = false;
+    },
     openTagPicker() {
       this.tagPickerOpen = true;
       this.$nextTick(() => this.$refs.tagOptions?.querySelector('[aria-pressed="true"]')?.focus({ preventScroll: true }));
@@ -447,7 +461,11 @@ export const RegisterView = {
         el.classList.add('is-bump');
       });
     },
-    clearSearch() { this.reg.search = ''; },
+    clearSearch() {
+      const editing = this.searchExpanded;
+      this.reg.search = '';
+      if (editing) this.$nextTick(() => this.$refs.productSearch?.focus({ preventScroll: true }));
+    },
     doClear() { clearCart(); this.cartOpen = false; this.confirmClear = false; },
     async openPay() {
       if (!this.hasItems) return;
@@ -518,20 +536,22 @@ export const RegisterView = {
     <!-- 选货 -->
     <section class="reg-pick" ref="pickPane" aria-label="选购商品">
       <div class="pick-bar" ref="pickBar">
-        <div class="reg-mode-row" :class="{ 'is-products': pickTab === 'products' }">
+        <div class="reg-mode-row" :class="{ 'is-products': pickTab === 'products', 'is-searching': compactTags && searchExpanded }">
           <div class="seg reg-modes" role="tablist" aria-label="选货类型">
             <button class="seg-btn" :class="{ 'is-on': pickTab === 'products' }" role="tab" :aria-selected="pickTab === 'products'" @click="pickTab = 'products'">商品</button>
             <button class="seg-btn" :class="{ 'is-on': pickTab === 'combos' }" role="tab" :aria-selected="pickTab === 'combos'" @click="pickTab = 'combos'">套餐</button>
           </div>
-          <div v-if="pickTab === 'products'" class="reg-search-scan">
-            <div class="input-search catalog-search">
+          <div v-if="pickTab === 'products'" class="reg-search-scan" @focusout="leaveSearch">
+            <div class="input-search catalog-search" :class="{ 'has-query': !!reg.search }">
               <ui-icon name="search" :size="17" />
-              <input class="input" v-model="reg.search" type="search" enterkeyhint="search"
-                     placeholder="搜名称 / SKU / 分类 / 标签" aria-label="搜索商品">
+              <input ref="productSearch" class="input" v-model="reg.search" type="search" enterkeyhint="search"
+                     :placeholder="compactTags ? '搜索' : '搜名称 / SKU / 分类 / 标签'" aria-label="搜索商品"
+                     @focus="startSearch" @keydown.enter="finishSearch" @keydown.esc="finishSearch">
               <button v-if="reg.search" class="pick-clear" @click="clearSearch" aria-label="清空搜索">
                 <ui-icon name="close" :size="15" />
               </button>
             </div>
+            <button v-if="compactTags && searchExpanded" class="reg-search-done" @click="finishSearch">完成</button>
             <button v-if="dockScanner" class="btn btn-sm reg-scan-button" @click="openScanner" aria-label="扫码录入商品">扫码</button>
           </div>
           <button v-if="pickTab === 'products'" class="chip chip-freq reg-frequent" :class="{ 'is-on': reg.onlyFrequent }" :aria-pressed="reg.onlyFrequent"
