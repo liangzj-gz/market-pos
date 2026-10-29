@@ -133,7 +133,7 @@ export async function uploadPaymentCodeImage(uid, channel, file) {
   return { ok: true, path };
 }
 
-/* 路径 → 可展示的签名 URL（有效期 1 年，加载时会续签）
+/* 路径 → 可展示的签名 URL（SDK 上限 3600 秒，到期由 store 层静默续签）
    自托管：文件接口要求本人 token；<img> 标签无法带 header，
    把 token 放 query（仅限收款码这类低敏感图片，路径不可猜测） */
 export async function signPaymentCodePath(path) {
@@ -142,7 +142,7 @@ export async function signPaymentCodePath(path) {
   if (/^data:image\//.test(path)) return path;
   if (SELF_HOSTED) return `/api/files/${path}?t=${encodeURIComponent(selfHostToken())}`;
   try {
-    const { data, error } = await storageApi().from().createSignedUrl(path, 60 * 60 * 24 * 365);
+    const { data, error } = await storageApi().from().createSignedUrl(path, 3600);
     if (error || !data || !data.signedUrl) return '';
     return data.signedUrl;
   } catch (e) {
@@ -181,13 +181,13 @@ export async function uploadProductImage(uid, blob, type, hash) {
   }
 }
 
-/* 商品图路径 → 可展示 URL（与收款码同一套签名/鉴权方式） */
+/* 商品图路径 → 可展示 URL（SDK 签名上限 3600 秒，store 层负责到期续签） */
 export async function signProductImagePath(path) {
   if (!path) return '';
   if (/^data:image\//.test(path)) return path;
   if (SELF_HOSTED) return `/api/files/${path}?t=${encodeURIComponent(selfHostToken())}`;
   try {
-    const { data, error } = await storageApi().from().createSignedUrl(path, 60 * 60 * 24 * 365);
+    const { data, error } = await storageApi().from().createSignedUrl(path, 3600);
     if (error || !data || !data.signedUrl) return '';
     return data.signedUrl;
   } catch (e) {

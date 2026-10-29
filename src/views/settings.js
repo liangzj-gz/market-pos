@@ -1,5 +1,5 @@
 /* 设置：云端账号、收款码、数据导出、业务规则对照 */
-import { store, actions, demoInfo, changePassword, logout, toast, PREVIEW, SELF_HOST_LOGIN } from '../data/store.js';
+import { store, actions, demoInfo, changePassword, logout, toast, PREVIEW, SELF_HOST_LOGIN, refreshPaymentCodesIfNeeded } from '../data/store.js';
 import { UiPaymentCode } from '../components/payment-code.js';
 import { fmtDT } from '../util/format.js';
 
@@ -45,6 +45,10 @@ export const SettingsView = {
     pwdReady() {
       return this.oldPwd.length >= 6 && this.newPwd.length >= 6 && this.newPwd === this.newPwd2;
     }
+  },
+  mounted() {
+    /* 收款码签名 URL 到期自动续签（页面长开时刷新设置页也能拿到新地址） */
+    refreshPaymentCodesIfNeeded();
   },
   methods: {
     /* 收款码：图片上传云端文件存储，数据库只存路径 */

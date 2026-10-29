@@ -73,7 +73,9 @@ function persistPreviewImage(productId, dataUrl) {
   store.db.previewImages = map;
 }
 
-/* 图片路径 → 可展示地址：预览读本机、云端按需签名（同一张只签一次） */
+/* 图片路径 → 可展示地址：预览读本机、云端按需签名（同一张只签一次）。
+   签名 URL 有效期 3600 秒，缓存 45 分钟视为过期并后台续签，页面长开图片不会失效。 */
+const SIGNED_URL_TTL_MS = 45 * 60 * 1000;
 const pendingImages = new Set();
 export function productImageSrc(p) {
   if (!p) return '';
@@ -81,14 +83,15 @@ export function productImageSrc(p) {
   if (!p.image_path || /^data:image\//.test(p.image_path)) return p.image_path || '';
   if (!store.db.productImageUrls) store.db.productImageUrls = {};
   const cached = store.db.productImageUrls[p.id];
-  if (cached) return cached;
+  if (cached && Date.now() - cached.at < SIGNED_URL_TTL_MS) return cached.url;
   if (!pendingImages.has(p.id)) {
     pendingImages.add(p.id);
+    /* 过期缓存先顶着显示，签好新地址再无缝换掉 */
     signProductImagePath(p.image_path)
-      .then(url => { if (url) store.db.productImageUrls[p.id] = url; })
+      .then(url => { if (url) store.db.productImageUrls[p.id] = { url, at: Date.now() }; })
       .finally(() => pendingImages.delete(p.id));
   }
-  return '';
+  return cached ? cached.url : '';
 }
 
 export async function loadProductImage(p) {
@@ -96,9 +99,10 @@ export async function loadProductImage(p) {
   if (PREVIEW) return store.db.previewImages?.[p.id] || '';
   if (/^data:image\//.test(p.image_path)) return p.image_path;
   if (!store.db.productImageUrls) store.db.productImageUrls = {};
-  if (store.db.productImageUrls[p.id]) return store.db.productImageUrls[p.id];
+  const cached = store.db.productImageUrls[p.id];
+  if (cached && Date.now() - cached.at < SIGNED_URL_TTL_MS) return cached.url;
   const url = await signProductImagePath(p.image_path);
-  if (url) store.db.productImageUrls[p.id] = url;
+  if (url) store.db.productImageUrls[p.id] = { url, at: Date.now() };
   return url;
 }
 
@@ -352,20 +356,34 @@ function normalizeProduct(p) {
 
 function mergeProduct(rec) {
   const p = normalizeProduct(rec);
-  /* 图片路径变了就丢掉旧签名地址，下次渲染重新签 */
-  if (store.db.productImageUrls) delete store.db.productImageUrls[p.id];
+  /* 图片路径变了才丢掉旧签名地址（同路径保留缓存，省一次签名请求） */
   const i = store.db.products.findIndex(x => Number(x.id) === Number(p.id));
-  if (i >= 0) store.db.products.splice(i, 1, { ...store.db.products[i], ...p });
+  const prev = i >= 0 ? store.db.products[i] : null;
+  if (prev && prev.image_path !== p.image_path && store.db.productImageUrls) {
+    delete store.db.productImageUrls[p.id];
+  }
+  if (i >= 0) store.db.products.splice(i, 1, { ...prev, ...p });
   else store.db.products.push(p);
 }
 
-/* 收款码路径 → 签名 URL（异步 hydrate，失败留空） */
+/* 收款码路径 → 签名 URL（异步 hydrate，失败留空）。
+   签名有效期 3600 秒：登录/保存时签名一次；settings 页打开时若已过 45 分钟则后台续签 */
 async function hydratePaymentCodes(paths) {
   const out = {};
   await Promise.all(Object.entries(paths || {}).map(async ([ch, path]) => {
     out[ch] = await signPaymentCodePath(path);
   }));
   store.db.paymentCodes = out;
+  store.db.paymentCodesAt = Date.now();
+}
+
+/* 收款码签名到期续签（供设置页打开时调用：过期则重签，未到期直接返回） */
+export async function refreshPaymentCodesIfNeeded() {
+  if (PREVIEW) return;
+  const paths = store.db.paymentCodePaths || {};
+  if (!Object.keys(paths).length) return;
+  if (store.db.paymentCodesAt && Date.now() - store.db.paymentCodesAt < SIGNED_URL_TTL_MS) return;
+  await hydratePaymentCodes(paths);
 }
 
 /* 把 load_snapshot 的返回装配进 store（orders/orderItems 由各页按需拉取） */
@@ -941,6 +959,7 @@ export const actions = {
       const paths = { ...(store.db.paymentCodePaths || {}), [channel]: up.path };
       store.db.paymentCodePaths = paths;
       store.db.paymentCodes = { ...(store.db.paymentCodes || {}), [channel]: await signPaymentCodePath(up.path) };
+      store.db.paymentCodesAt = Date.now();
       if (old && old !== up.path) removeStorageObject(old);
       return res;
     }, '收款码已更新');
