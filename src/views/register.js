@@ -24,6 +24,7 @@ export const RegisterView = {
       paying: false, submitting: false, receipt: null, confirmClear: false,
       scanning: false, scanFeedback: '', scanTone: 'info', scanSuccess: 0,
       dockScanner: window.matchMedia('(min-width: 900px)').matches,
+      compactTags: window.matchMedia('(max-width: 640px)').matches, tagPickerOpen: false,
       comboPick: null, pickGroups: [], activeRoot: null, activeMid: null, pickTab: 'products', tag: 'all'
     };
   },
@@ -113,6 +114,7 @@ export const RegisterView = {
     hasItems(value) { if (!value) { this.scanFeedback = ''; this.scanTone = 'info'; } },
     rootGroups() { this._anchor = null; this.$nextTick(this.refreshCategories); },
     pickTab() {
+      this.tagPickerOpen = false;
       this._anchor = null;
       this.$nextTick(() => {
         this.refreshCategories();
@@ -123,6 +125,12 @@ export const RegisterView = {
     activeMid() { this.$nextTick(this.revealCategoryAnchors); }
   },
   mounted() {
+    this._tagMedia = window.matchMedia('(max-width: 640px)');
+    this._tagLayout = event => {
+      this.compactTags = event.matches;
+      if (!event.matches) this.tagPickerOpen = false;
+    };
+    this._tagMedia.addEventListener('change', this._tagLayout);
     this._scannerMedia = window.matchMedia('(min-width: 900px)');
     this._scannerLayout = event => { this.scanning = false; this.dockScanner = event.matches; };
     this._scannerMedia.addEventListener('change', this._scannerLayout);
@@ -157,6 +165,7 @@ export const RegisterView = {
     this.$nextTick(this.refreshCategories);
   },
   beforeUnmount() {
+    this._tagMedia.removeEventListener('change', this._tagLayout);
     this._keyboardViewport?.removeEventListener('resize', this._keyboardLayout);
     this._keyboardViewport?.removeEventListener('scroll', this._keyboardLayout);
     document.removeEventListener('focusin', this._keyboardLayout);
@@ -173,6 +182,18 @@ export const RegisterView = {
     if (this._categoryRaf) cancelAnimationFrame(this._categoryRaf);
   },
   methods: {
+    openTagPicker() {
+      this.tagPickerOpen = true;
+      this.$nextTick(() => this.$refs.tagOptions?.querySelector('[aria-pressed="true"]')?.focus({ preventScroll: true }));
+    },
+    closeTagPicker() {
+      this.tagPickerOpen = false;
+      this.$nextTick(() => this.$refs.tagToggle?.focus({ preventScroll: true }));
+    },
+    selectTag(name) {
+      this.tag = name;
+      this.closeTagPicker();
+    },
     fitCartToKeyboard() {
       const cart = this.$el.querySelector('.reg-cart');
       const viewport = this._keyboardViewport;
@@ -472,6 +493,19 @@ export const RegisterView = {
   },
   template: `
 <div class="v-register">
+  <ui-sheet v-if="tagPickerOpen" title="选择商品标签" @close="closeTagPicker">
+    <div class="reg-tag-options" ref="tagOptions" role="group" aria-label="选择商品标签">
+      <button class="reg-tag-option reg-tag-all" :aria-pressed="tag === 'all'" @click="selectTag('all')">
+        <span class="reg-tag-name">全部标签</span>
+        <ui-icon v-if="tag === 'all'" name="check" :size="18" />
+      </button>
+      <button v-for="t in tags" :key="t.name" class="reg-tag-option" :aria-pressed="tag === t.name" @click="selectTag(t.name)">
+        <span class="reg-tag-name">{{ t.name }}</span>
+        <span class="reg-tag-count">{{ t.count }} 款商品</span>
+        <ui-icon v-if="tag === t.name" name="check" :size="18" />
+      </button>
+    </div>
+  </ui-sheet>
   <ui-sheet v-if="scanning" title="扫码录入商品" @close="scanning = false">
     <ui-barcode-scanner :feedback="scanFeedback" :tone="scanTone" :success-key="scanSuccess" :items="scanItems" @scan="scanProduct" @change-quantity="changeScanQuantity" />
     <template #foot>
@@ -484,7 +518,7 @@ export const RegisterView = {
     <!-- 选货 -->
     <section class="reg-pick" ref="pickPane" aria-label="选购商品">
       <div class="pick-bar" ref="pickBar">
-        <div class="reg-mode-row">
+        <div class="reg-mode-row" :class="{ 'is-products': pickTab === 'products' }">
           <div class="seg reg-modes" role="tablist" aria-label="选货类型">
             <button class="seg-btn" :class="{ 'is-on': pickTab === 'products' }" role="tab" :aria-selected="pickTab === 'products'" @click="pickTab = 'products'">商品</button>
             <button class="seg-btn" :class="{ 'is-on': pickTab === 'combos' }" role="tab" :aria-selected="pickTab === 'combos'" @click="pickTab = 'combos'">套餐</button>
@@ -502,8 +536,14 @@ export const RegisterView = {
           </div>
           <button v-if="pickTab === 'products'" class="chip chip-freq reg-frequent" :class="{ 'is-on': reg.onlyFrequent }" :aria-pressed="reg.onlyFrequent"
                   @click="reg.onlyFrequent = !reg.onlyFrequent"><ui-icon name="spark" :size="14" /> 常卖</button>
+          <button v-if="pickTab === 'products' && compactTags && tags.length" ref="tagToggle" class="chip reg-tag-toggle"
+                  :class="{ 'is-on': tag !== 'all' }" :aria-expanded="tagPickerOpen" aria-haspopup="dialog"
+                  :aria-label="'标签筛选，当前：' + (tag === 'all' ? '全部标签' : tag)"
+                  :title="tag === 'all' ? '按标签筛选商品' : '当前标签：' + tag" @click="openTagPicker">
+            <span>{{ tag === 'all' ? '标签' : tag }}</span><ui-icon name="chevronDown" :size="13" />
+          </button>
         </div>
-        <template v-if="pickTab === 'products'">
+        <template v-if="pickTab === 'products' && !compactTags && tags.length">
         <div class="catalog-filter-row reg-filter-row">
         <div class="chips-scroll catalog-tags" v-if="tags.length" role="group" aria-label="商品标签筛选">
           <button class="chip" :class="{ 'is-on': tag === 'all' }" :aria-pressed="tag === 'all'" @click="tag = 'all'">全部标签</button>

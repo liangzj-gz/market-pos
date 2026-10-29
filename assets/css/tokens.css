@@ -87,7 +87,7 @@
   --sh-pop: 0 30px 80px rgba(0, 0, 0, .20);
 
   /* --- 尺寸 --- */
-  --topbar-h: 28px;
+  --topbar-h: 44px;
   --tabbar-h: calc(64px * 2 / 3);
   --tap: 44px;
   --sidebar-w: 120px;

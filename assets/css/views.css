@@ -1431,13 +1431,14 @@
   .bi-sheet-hint { display: block; margin: 0 0 8px; }
 }
 
-/* 移动导航压缩高度，商品区随导航尺寸自动让位。 */
-.topbar { gap: 6px; flex-shrink: 0; }
-.topbar .brand { gap: 6px; font-size: var(--fs-md); font-weight: 600; line-height: 1.25; white-space: nowrap; }
-.topbar .brand-mark { width: 20px; height: 20px; border-radius: 6px; }
-.topbar .brand-mark svg { width: 13px; height: 13px; }
-.topbar .badge-demo { padding: 2px 6px; font-size: var(--fs-xs); font-weight: 500; line-height: 1.25; white-space: nowrap; }
-.topbar-refresh { display: flex; align-items: center; justify-content: center; flex: none; width: 26px; height: 26px; border-radius: var(--r-xs); color: var(--blue); }
+/* 移动标题与操作留出呼吸空间，商品区随导航尺寸自动让位。 */
+.topbar { gap: 8px; flex-shrink: 0; }
+.topbar .brand { gap: 8px; font-size: var(--fs-lg); font-weight: 600; line-height: 1.25; letter-spacing: 0; white-space: nowrap; }
+.topbar .brand-mark { width: 28px; height: 28px; border-radius: var(--r-xs); background: var(--blue-soft); color: var(--blue); box-shadow: none; }
+.topbar .brand-mark svg { width: 17px; height: 17px; }
+.topbar .badge-demo { padding: 2px; background: transparent; font-size: var(--fs-xs); font-weight: 500; line-height: 1.25; white-space: nowrap; }
+.topbar .badge-demo.badge-bad { background: var(--amber-soft); border-radius: var(--r-xs); }
+.topbar-refresh { display: flex; align-items: center; justify-content: center; flex: none; width: 32px; height: 32px; border-radius: var(--r-xs); color: var(--blue); background: var(--blue-soft); }
 .topbar-refresh:hover { background: var(--blue-soft); }
 .topbar-refresh:disabled { opacity: .45; cursor: wait; }
 .topbar-refresh .is-spinning { animation: spin .7s linear infinite; }
@@ -1448,21 +1449,25 @@
 .v-register { font-family: var(--font-sans); }
 .v-register .seg-btn, .v-register .chip { font-weight: 500; line-height: 1.25; }
 .v-register .seg-btn.is-on, .v-register .chip[aria-pressed="true"] { font-weight: 600; }
-.v-register .pick-bar { padding: 4px 0; margin: -4px 0 6px; background: var(--bg); border-bottom: 0; }
-.reg-mode-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
-.reg-modes { margin-bottom: 0; padding: 2px; flex: none; }
+.v-register .pick-bar { padding: 6px 0; margin: -4px 0 10px; background: var(--bg); border-bottom: 0; }
+.reg-mode-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 0; }
+.reg-mode-row + .reg-filter-row { margin-top: 8px; }
+.reg-modes { margin-bottom: 0; padding: 3px; flex: none; }
 .reg-mode-row .reg-search-scan { flex: 1; min-width: 0; width: auto; }
 .reg-mode-row .catalog-search { flex: 1; min-width: 0; }
 .reg-mode-row .input-search .input { padding-left: 28px; padding-right: 28px; }
 .reg-mode-row .input-search > svg { left: 8px; }
 .reg-mode-row .pick-clear { right: 2px; width: 24px; height: 24px; }
-.reg-modes .seg-btn { min-height: 24px; padding: 2px 12px; font-size: var(--fs-sm); }
-.reg-frequent { flex: none; min-height: 24px; padding: 2px 9px; font-size: var(--fs-sm); }
-.v-register .pick-bar .input { min-height: 28px; height: 28px; padding-top: 2px; padding-bottom: 2px; font-size: var(--fs-sm); font-weight: 400; line-height: 1.25; }
+.reg-modes .seg-btn { min-height: 30px; padding: 4px 12px; font-size: var(--fs-sm); }
+.reg-frequent { flex: none; min-height: 34px; padding: 5px 10px; font-size: var(--fs-sm); }
+.reg-tag-toggle { min-height: 34px; max-width: 88px; padding: 5px 10px; font-size: var(--fs-sm); }
+.reg-tag-toggle span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reg-tag-toggle svg { flex: none; }
+.v-register .pick-bar .input { min-height: 36px; height: 36px; padding-top: 6px; padding-bottom: 6px; font-size: var(--fs-sm); font-weight: 400; line-height: 1.25; }
 .v-register .reg-filter-row { gap: 6px; }
 .v-register .reg-filter-row .catalog-search { min-width: 0; flex-basis: 240px; }
 .v-register .reg-filter-row .chips-scroll { gap: 6px; margin-top: 0; margin-bottom: 0; padding-bottom: 0; }
-.v-register .reg-filter-row .chip { min-height: 22px; padding: 1px 8px; font-size: var(--fs-sm); }
+.v-register .reg-filter-row .chip { min-height: 28px; padding: 4px 10px; font-size: var(--fs-sm); }
 .v-register .reg-filter-row .chip-count { font-size: var(--fs-xs); font-weight: 500; }
 @media (max-width: 899px) {
   .content:has(> .v-register) { padding-top: 10px; }
@@ -1470,6 +1475,20 @@
   .v-register .reg-filter-row .catalog-search { flex-basis: auto; width: 100%; }
   .v-register .reg-filter-row .catalog-tags { flex: auto; }
 }
+@media (max-width: 640px) {
+  .v-register .reg-mode-row.is-products { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "modes frequent tags" "search search search"; gap: 8px; }
+  .reg-modes { grid-area: modes; justify-self: start; }
+  .reg-frequent { grid-area: frequent; }
+  .reg-tag-toggle { grid-area: tags; }
+  .reg-mode-row .reg-search-scan { grid-area: search; width: 100%; }
+}
+.reg-tag-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.reg-tag-option { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; min-width: 0; min-height: 68px; padding: 12px; text-align: left; background: var(--glass); border: 1px solid var(--stroke); border-radius: var(--r-sm); }
+.reg-tag-option[aria-pressed="true"] { color: var(--blue-deep); background: var(--blue-soft); border-color: var(--blue-line); }
+.reg-tag-name { padding-right: 22px; font-size: var(--fs-sm); font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
+.reg-tag-count { color: var(--label-3); font-size: var(--fs-xs); }
+.reg-tag-option > svg { position: absolute; top: 12px; right: 12px; color: var(--blue); }
+.reg-tag-all { grid-column: 1 / -1; min-height: 46px; justify-content: center; }
 .reg-browse { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 10px; align-items: start; }
 .reg-products { min-width: 0; }
 .v-register .reg-category-rail {
@@ -1529,8 +1548,9 @@
   .v-register .pick-cell { --pick-card-height: clamp(138px, 18dvh, 156px); }
 }
 @media (max-width: 360px) {
-  .reg-mode-row { gap: 5px; }
-  .reg-modes .seg-btn { padding-right: 9px; padding-left: 9px; }
+  .topbar { gap: 6px; }
+  .topbar .brand { font-size: var(--fs-md); }
+  .reg-modes .seg-btn { padding-right: 10px; padding-left: 10px; }
   /* 窄屏略收分类栏，给两列商品的大图与价格留出空间。 */
   .v-register .reg-browse { grid-template-columns: 66px minmax(0, 1fr); gap: 8px; }
   .v-register .pick-cell { padding: 6px; }
@@ -1695,7 +1715,7 @@
 /* 商品条码绑定与开单扫码 */
 .reg-search-scan { display: flex; align-items: center; gap: 6px; flex: 0 1 280px; min-width: 0; }
 .v-register .reg-search-scan .catalog-search { flex: 1; min-width: 0; width: auto; }
-.reg-scan-button { flex: none; min-height: 28px; color: var(--blue); background: var(--blue-soft); }
+.reg-scan-button { flex: none; min-height: 34px; color: var(--blue); background: var(--blue-soft); }
 .barcode-scanner { margin-top: 10px; }
 /* 年月日时分同排显示，滚轮内的拖动不传递给收款页。 */
 .time-wheel { position: relative; margin-top: 6px; padding: 1px 6px; isolation: isolate; }
