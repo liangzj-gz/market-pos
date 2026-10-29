@@ -1472,20 +1472,6 @@
   /* 手机上固定两列，三列会把名字和库存挤成两行 */
   .v-register .pick-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-@media (min-width: 641px) and (max-width: 899px) {
-  /* iPad 竖屏：两列大卡，图片通栏铺顶（面积约手机版 8 倍），价格库存一行、名称在下 */
-  .v-register .pick-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .v-register .pick-cell { height: auto; min-height: 196px; padding: 10px; }
-  .v-register .pick-head { flex-direction: column; align-items: stretch; gap: 6px; }
-  .v-register .pick-thumb { width: 100%; height: 92px; border-radius: 10px; font-size: 26px; }
-  .v-register .pick-figures { flex-direction: row; align-items: baseline; justify-content: space-between; gap: 8px; }
-  .v-register .pick-head .pick-price { font-size: 17px; }
-  .v-register .pick-head .pick-stock { font-size: 12.5px; }
-  .v-register .pick-name { font-size: 14px; line-height: 1.35; margin-top: 6px; padding-bottom: 36px; }
-  .v-register .pick-cell.has-qty .pick-head { padding-right: 0; }
-  .v-register .pick-add, .v-register .pick-quantity button { width: 34px; height: 34px; }
-  .v-register .pick-quantity b { font-size: 14px; }
-}
 .v-register .pick-cell { height: 120px; min-height: 0; padding: 8px; box-shadow: none; background: var(--glass-strong); border-color: var(--stroke); }
 .v-register .pick-cell:active { transform: none; }
 .v-register .pick-cell.has-qty { background: linear-gradient(var(--blue-soft), var(--blue-soft)), var(--bg); border-color: var(--blue-line); }
@@ -1522,6 +1508,21 @@
 .v-register .pick-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .v-register .pick-price { font-size: var(--fs-lg); line-height: 1.3; margin-top: 2px; }
 .v-register .pick-stock { line-height: 1.3; margin-top: 0; }
+@media (min-width: 641px) and (max-width: 899px) {
+  /* iPad 竖屏：两列大卡，图片通栏铺顶（面积约手机版 8 倍），价格库存一行、名称在下。
+     必须放在上面所有基础规则之后，否则同特异性下会被后面的 34px 小图等基础样式覆盖 */
+  .v-register .pick-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .v-register .pick-cell { height: auto; min-height: 196px; padding: 10px; }
+  .v-register .pick-head { flex-direction: column; align-items: stretch; gap: 6px; }
+  .v-register .pick-thumb { width: 100%; height: 92px; border-radius: 10px; font-size: 26px; }
+  .v-register .pick-figures { flex-direction: row; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .v-register .pick-head .pick-price { font-size: 17px; }
+  .v-register .pick-head .pick-stock { font-size: 12.5px; }
+  .v-register .pick-name { font-size: 14px; line-height: 1.35; margin-top: 6px; padding-bottom: 36px; }
+  .v-register .pick-cell.has-qty .pick-head { padding-right: 0; }
+  .v-register .pick-add, .v-register .pick-quantity button { width: 34px; height: 34px; }
+  .v-register .pick-quantity b { font-size: 14px; }
+}
 .pick-add, .pick-quantity { position: absolute; right: 7px; bottom: 7px; display: flex; align-items: center; justify-content: center; }
 .pick-add, .pick-quantity button { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 50%; color: var(--blue); background: var(--blue-soft); }
 .pick-quantity { gap: 4px; border-radius: var(--r-pill); background: var(--bg); }
