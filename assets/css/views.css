@@ -1473,8 +1473,16 @@
   .v-register .pick-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (min-width: 641px) and (max-width: 899px) {
-  /* iPad 竖屏：比手机多两列 */
-  .v-register .pick-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  /* iPad 竖屏：两列大卡，图大字大，摆摊选品一眼看清 */
+  .v-register .pick-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .v-register .pick-cell { height: 150px; padding: 10px; }
+  .v-register .pick-thumb { width: 56px; height: 56px; border-radius: 10px; }
+  .v-register .pick-head { gap: 10px; }
+  .v-register .pick-head .pick-price { font-size: 16px; }
+  .v-register .pick-head .pick-stock { font-size: 12px; }
+  .v-register .pick-name { font-size: 14px; margin-top: 8px; padding-bottom: 34px; }
+  .v-register .pick-add, .v-register .pick-quantity button { width: 34px; height: 34px; }
+  .v-register .pick-quantity b { font-size: 14px; }
 }
 .v-register .pick-cell { height: 120px; min-height: 0; padding: 8px; box-shadow: none; background: var(--glass-strong); border-color: var(--stroke); }
 .v-register .pick-cell:active { transform: none; }
