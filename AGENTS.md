@@ -43,6 +43,7 @@
 - **正式上线不是 `git push`**：正式地址由 WorkBuddy 桌面端「发布为应用」触发，`git push` 只会更新 GitHub Pages 预览站。两者互不影响，各自独立。
 - **仓库是 public**（因为免费账号的 GitHub Pages 只支持公开仓库）。不要往里提交任何密钥、token、真实业务数据。`.workbuddy/` 已在 `.gitignore` 中排除。
 - 改 UI 优先改 `assets/css/views.css` 里的既有类名，遵循现有设计令牌（`assets/css/tokens.css`），别硬写颜色值。
+- 商品图只存文件存储，`products.image_path` 存路径，不把 base64 写进数据库；手机端上传前压到 512px WebP。云端需执行 `sql/cloud/0020_product_image.sql`，自建环境由 `sql/migrations/0011_product_image.sql` 自动迁移。
 
 ## 本地预览（Mac 上）
 
