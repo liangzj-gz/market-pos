@@ -1448,23 +1448,24 @@
 .v-register { font-family: var(--font-sans); }
 .v-register .seg-btn, .v-register .chip { font-weight: 500; line-height: 1.25; }
 .v-register .seg-btn.is-on, .v-register .chip[aria-pressed="true"] { font-weight: 600; }
-.v-register .pick-bar { padding: 8px 0; margin: -8px 0 10px; background: var(--bg); border-bottom: 0; }
-.reg-mode-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 7px; }
-.reg-modes { margin-bottom: 0; flex: none; }
+.v-register .pick-bar { padding: 4px 0; margin: -4px 0 6px; background: var(--bg); border-bottom: 0; }
+.reg-mode-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.reg-modes { margin-bottom: 0; padding: 2px; flex: none; }
 .reg-mode-row .reg-search-scan { flex: 1; min-width: 0; width: auto; }
 .reg-mode-row .catalog-search { flex: 1; min-width: 0; }
 .reg-mode-row .input-search .input { padding-left: 28px; padding-right: 28px; }
 .reg-mode-row .input-search > svg { left: 8px; }
 .reg-mode-row .pick-clear { right: 2px; width: 24px; height: 24px; }
-.reg-modes .seg-btn { min-height: 28px; padding: 3px 14px; font-size: var(--fs-sm); }
-.reg-frequent { flex: none; min-height: 28px; padding: 3px 10px; font-size: var(--fs-sm); }
-.v-register .pick-bar .input { min-height: 32px; height: 32px; padding-top: 4px; padding-bottom: 4px; font-size: var(--fs-sm); font-weight: 400; line-height: 1.25; }
+.reg-modes .seg-btn { min-height: 24px; padding: 2px 12px; font-size: var(--fs-sm); }
+.reg-frequent { flex: none; min-height: 24px; padding: 2px 9px; font-size: var(--fs-sm); }
+.v-register .pick-bar .input { min-height: 28px; height: 28px; padding-top: 2px; padding-bottom: 2px; font-size: var(--fs-sm); font-weight: 400; line-height: 1.25; }
 .v-register .reg-filter-row { gap: 6px; }
 .v-register .reg-filter-row .catalog-search { min-width: 0; flex-basis: 240px; }
-.v-register .reg-filter-row .chips-scroll { margin-top: 0; }
-.v-register .reg-filter-row .chip { min-height: 26px; padding: 3px 9px; font-size: var(--fs-sm); }
+.v-register .reg-filter-row .chips-scroll { gap: 6px; margin-top: 0; margin-bottom: 0; padding-bottom: 0; }
+.v-register .reg-filter-row .chip { min-height: 22px; padding: 1px 8px; font-size: var(--fs-sm); }
 .v-register .reg-filter-row .chip-count { font-size: var(--fs-xs); font-weight: 500; }
 @media (max-width: 899px) {
+  .content:has(> .v-register) { padding-top: 10px; }
   .v-register .reg-filter-row { flex-direction: column; align-items: stretch; }
   .v-register .reg-filter-row .catalog-search { flex-basis: auto; width: 100%; }
   .v-register .reg-filter-row .catalog-tags { flex: auto; }
@@ -1694,7 +1695,7 @@
 /* 商品条码绑定与开单扫码 */
 .reg-search-scan { display: flex; align-items: center; gap: 6px; flex: 0 1 280px; min-width: 0; }
 .v-register .reg-search-scan .catalog-search { flex: 1; min-width: 0; width: auto; }
-.reg-scan-button { flex: none; min-height: 32px; color: var(--blue); background: var(--blue-soft); }
+.reg-scan-button { flex: none; min-height: 28px; color: var(--blue); background: var(--blue-soft); }
 .barcode-scanner { margin-top: 10px; }
 /* 年月日时分同排显示，滚轮内的拖动不传递给收款页。 */
 .time-wheel { position: relative; margin-top: 6px; padding: 1px 6px; isolation: isolate; }
