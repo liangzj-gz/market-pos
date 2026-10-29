@@ -167,7 +167,7 @@ export async function uploadProductImage(uid, blob, type, hash) {
         fr.onerror = reject;
         fr.readAsDataURL(blob);
       });
-      const r = await selfHostFetch('/api/files', { path, base64, contentType: type });
+      const r = await selfHostFetch('/api/files', { path, base64, contentType: real });
       return r.ok ? { ok: true, path } : { ok: false, error: r.error || '商品图上传失败' };
     } catch (e) {
       return { ok: false, error: '商品图上传失败，请重试' };
