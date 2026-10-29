@@ -575,10 +575,12 @@ export const RegisterView = {
                   <img v-if="imageOf(p)" :src="imageOf(p)" alt="" loading="lazy" decoding="async">
                   <span v-else>{{ p.name.slice(0, 1) }}</span>
                 </span>
-                <span class="pick-name" :title="p.name">{{ p.name }}</span>
+                <span class="pick-figures">
+                  <span class="pick-price mono">{{ money(p.list_price) }}</span>
+                  <span class="pick-stock" :class="{ low: stockLeft(p).low }">{{ stockLeft(p).text }}</span>
+                </span>
               </span>
-              <span class="pick-price mono">{{ money(p.list_price) }}</span>
-              <span class="pick-stock" :class="{ low: stockLeft(p).low }">{{ stockLeft(p).text }}</span>
+              <span class="pick-name" :title="p.name">{{ p.name }}</span>
             </button>
             <div class="pick-quantity" v-if="inCart(p)">
               <button @click="decreaseProduct(p)" :aria-label="'减少 ' + p.name"><ui-icon name="minus" :size="14" /></button>
